@@ -44,7 +44,10 @@ a:hover { color: var(--focus); }
   display: grid;
   grid-template-columns: 15rem 1fr;
   min-height: 100vh;
+  min-width: 0;
 }
+
+.shell > * { min-width: 0; }
 
 .nav {
   background: var(--bg-2);
@@ -90,7 +93,15 @@ a:hover { color: var(--focus); }
   color: var(--gold);
 }
 
-main { padding: 1.25rem 1.4rem 3rem; max-width: 72rem; }
+main {
+  padding: 1.25rem 1.4rem 3rem;
+  max-width: 72rem;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+p, li, td, th, pre { overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; }
 
 .page { display: none; }
 .page.active { display: block; }
@@ -190,7 +201,7 @@ th { color: var(--gold); font-weight: 600; }
 .data-table.open { display: block; }
 
 .heat { border-collapse: collapse; }
-.heat td { min-width: 4.5rem; text-align: center; }
+.heat td, .heat th { min-width: 2.4rem; text-align: center; }
 
 .warn {
   border-left: 4px solid var(--gold);

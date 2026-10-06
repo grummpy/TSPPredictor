@@ -12,3 +12,4 @@ data/snapshot/.last_attempt.json
 *.egg-info/
 .coverage
 htmlcov/
+.playwright-mcp/
