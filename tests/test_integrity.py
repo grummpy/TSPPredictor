@@ -1,6 +1,29 @@
 """Tests 8–12: snapshot counts and hand-checked returns."""
 
+from dataclasses import replace
+
 import pandas as pd
+import pytest
+
+from tsppredictor.data.snapshot import check_integrity
+
+
+@pytest.mark.parametrize("gap", [0.0, 0.02])
+def test_reconciliation_validates_future_complete_month(snap, gap):
+    dates = pd.to_datetime(["2026-09-30", "2026-10-30", "2026-11-02"])
+    daily = pd.DataFrame(
+        {fund: [100.0, 101.0, 102.0] for fund in ("G", "F", "C", "S", "I")}, index=dates
+    )
+    monthly = pd.DataFrame(
+        {"month": ["2026-10"], **{f"{fund} Fund": [1.0] for fund in ("G", "F", "C", "S", "I")}}
+    )
+    monthly.loc[0, "C Fund"] += gap
+    refreshed = replace(snap, daily=daily, monthly=monthly)
+    report = check_integrity(refreshed, as_of_today=dates[-1])
+    assert report.stats["recon_months"] == 1
+    assert report.ok == (gap == 0.0)
+    if gap:
+        assert any("C daily-to-monthly gap" in error for error in report.errors)
 
 
 def _pct(prices, fund, start, end):

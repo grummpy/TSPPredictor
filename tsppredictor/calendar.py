@@ -84,9 +84,9 @@ def projected_holidays(year: int) -> set[date]:
         _nth_weekday(year, 11, 3, 4),  # Thanksgiving
         _observed(date(year, 12, 25)),
     }
-    # If New Year's observed falls on Dec 31 of the prior calculation, keep Jan 1's observation.
-    if date(year, 1, 1).weekday() == 5:
-        holidays.add(date(year - 1, 12, 31))
+    # Next year's Saturday New Year's Day is observed in this year.
+    if date(year + 1, 1, 1).weekday() == 5:
+        holidays.add(date(year, 12, 31))
     _HOLIDAY_CACHE[year] = holidays
     return holidays
 

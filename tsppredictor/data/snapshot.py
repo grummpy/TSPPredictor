@@ -172,7 +172,7 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
     report.stats["n_monthly"] = int(len(monthly))
     report.stats["monthly_first"] = str(monthly["month"].iloc[0])
     report.stats["monthly_last"] = str(monthly["month"].iloc[-1])
-    # Reconciliation, 2003-07 through 2026-09 when those months exist.
+    # Reconcile overlapping months from 2003-07 onward.
     max_abs = {}
     n_cmp = 0
     worst = 0.0
@@ -181,7 +181,7 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
     for fund in core:
         calc = month_end_return_pct(daily, fund)
         joined = pd.DataFrame({"calc": calc, "off": pd.to_numeric(official_df[long_name[fund]], errors="coerce")})
-        joined = joined.loc[(joined.index >= "2003-07") & (joined.index <= "2026-09")].dropna()
+        joined = joined.loc[joined.index >= "2003-07"].dropna()
         n_cmp = int(len(joined))
         diff = (joined["calc"] - joined["off"]).abs()
         max_abs[fund] = float(diff.max()) if len(diff) else None
@@ -233,4 +233,3 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
 
 def core_prices(snap: Snapshot) -> pd.DataFrame:
     return snap.daily[["G", "F", "C", "S", "I"]].copy()
-

@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pytest
 
+from tsppredictor.calendar import project_tsp_days, projected_holidays
 from tsppredictor.rules.ift import TransferBook, as_weights
 
 ET = ZoneInfo("America/New_York")
@@ -23,6 +24,21 @@ def test_valid_allocation_weights_are_normalized():
     expected = [0.5, 0.0, 0.5, 0.0, 0.0]
     assert np.allclose(as_weights({"G": 50, "C": 50}), expected)
     assert np.allclose(as_weights([50, 0, 50, 0, 0]), expected)
+
+
+def test_projected_new_year_observation_crosses_year_boundary():
+    assert date(2027, 12, 31) in projected_holidays(2027)
+    assert project_tsp_days(date(2027, 12, 30), date(2028, 1, 3)) == [
+        date(2027, 12, 30),
+        date(2028, 1, 3),
+    ]
+
+
+def test_projected_new_year_sunday_observation():
+    assert project_tsp_days(date(2022, 12, 30), date(2023, 1, 3)) == [
+        date(2022, 12, 30),
+        date(2023, 1, 3),
+    ]
 
 
 def et(year, month, day, hour, minute=0, second=0) -> datetime:

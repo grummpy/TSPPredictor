@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from tsppredictor.backtest.honesty import verdict
-from tsppredictor.backtest.metrics import cagr, max_drawdown, one_way_turnover
+from tsppredictor.backtest.metrics import cagr, max_drawdown, one_way_turnover, summarize
 from tsppredictor.backtest.walkforward import constant_fund_path, one_hot, simulate_targets
 
 
@@ -17,6 +17,39 @@ def test_positive_interval_without_sufficient_dsr_is_inconclusive(dsr):
 def test_verdict_dsr_threshold_and_underperformance():
     assert verdict(0.02, [0.01, 0.03], 0.95) == "Beat"
     assert verdict(-0.02, [-0.03, -0.01], None) == "Underperformed"
+
+
+@pytest.mark.parametrize("periods", [12, 252])
+def test_summary_uses_requested_annualization(periods):
+    dates = pd.date_range("2020-01-31", periods=25, freq="ME")
+    rets = np.array([0.0] + [0.02, -0.01] * 12)
+    wealth = np.cumprod(1.0 + rets)
+    weights = np.vstack([one_hot("C")] * len(dates))
+    stats = summarize(wealth, dates, weights, np.zeros(len(dates)), periods=periods)
+    assert stats["vol"] == pytest.approx(np.std(rets[1:], ddof=1) * np.sqrt(periods))
+    assert stats["sharpe_vs_g"] == pytest.approx(
+        np.mean(rets[1:]) / np.std(rets[1:], ddof=1) * np.sqrt(periods)
+    )
+    assert stats["sortino_vs_g"] == pytest.approx(np.mean(rets[1:]) / 0.01 * np.sqrt(periods))
+    expected_worst = (
+        np.min(wealth[periods:] / wealth[:-periods] - 1.0)
+        if len(wealth) > periods
+        else wealth[-1] / wealth[0] - 1.0
+    )
+    assert stats["worst_12m"] == pytest.approx(expected_worst)
+
+
+def test_build_metrics_pass_monthly_periods():
+    from tsppredictor.build import _metrics_on
+
+    dates = pd.date_range("2020-01-31", periods=25, freq="ME")
+    wealth = np.cumprod([1.0] + [1.02, 0.99] * 12)
+    weights = np.vstack([one_hot("C")] * len(dates))
+    prices = pd.DataFrame({"G": np.ones(len(dates))}, index=dates)
+    expected = summarize(wealth, dates, weights, np.zeros(len(dates)), periods=12)
+    actual = _metrics_on(wealth, dates, weights, prices, [], periods=12)
+    for key in ("vol", "sharpe_vs_g", "sortino_vs_g", "worst_12m"):
+        assert actual[key] == round(expected[key], 6)
 
 
 def test_18_toy_series_matches_hand_calculation():

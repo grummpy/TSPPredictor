@@ -177,10 +177,10 @@ def _sentence(name: str, comparison: dict, baseline: str) -> str:
     return text
 
 
-def _metrics_on(wealth, dates, weights, prices, post_dates) -> dict:
+def _metrics_on(wealth, dates, weights, prices, post_dates, periods: int = 252) -> dict:
     sliced_g = _g_returns(prices, dates)
     posts = [pd.Timestamp(ts) for ts in post_dates if dates[0] <= pd.Timestamp(ts) <= dates[-1]]
-    stats = summarize(wealth, dates, weights, sliced_g, posts)
+    stats = summarize(wealth, dates, weights, sliced_g, posts, periods=periods)
     for key, value in list(stats.items()):
         if isinstance(value, float):
             stats[key] = round(value, 6)
@@ -275,6 +275,7 @@ def _run_block(spec, features, prices, l2050: pd.Series, n_trials_box: list[int]
     h = spec["h"]
     lag = spec["lag"]
     cadence = spec["cadence"]
+    periods = 252 if cadence == "daily" else 12
     _log(f"walk-forward {cadence} h={h} lag={lag} hgb={spec['fit_hgb']}")
     labels, excess = forward_excess(prices, h, lag)
     columns = [name for name in model_feature_names() if name in features.columns]
@@ -362,7 +363,7 @@ def _run_block(spec, features, prices, l2050: pd.Series, n_trials_box: list[int]
         wts = _weights_on(weights, pd.DatetimeIndex(row_dates), d[0], d[-1])
         if len(wts) != len(d):
             wts = np.repeat(one_hot("G").reshape(1, -1), len(d), axis=0)
-        metrics = _metrics_on(w, d, wts, prices, post_dates)
+        metrics = _metrics_on(w, d, wts, prices, post_dates, periods=periods)
         versus = {}
         sentences = {}
         base_windows = {
@@ -415,7 +416,7 @@ def _run_block(spec, features, prices, l2050: pd.Series, n_trials_box: list[int]
         lw, ld = l_window
         l_weights = np.repeat(one_hot("G").reshape(1, -1), len(ld), axis=0)
         # L 2050 is a lifecycle mix, not a G/F/C/S/I weight. Time-in-fund is left as the mix itself via a separate panel.
-        metrics = _metrics_on(lw, ld, l_weights, prices, [])
+        metrics = _metrics_on(lw, ld, l_weights, prices, [], periods=periods)
         versus = {}
         sentences = {}
         for base_key in ("bh_c", "always_g", "static_60_40"):

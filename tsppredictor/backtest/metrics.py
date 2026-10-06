@@ -164,25 +164,26 @@ def summarize(
     weights: np.ndarray,
     g_returns: np.ndarray,
     post_dates: list | None = None,
+    periods: int = 252,
 ) -> dict:
     rets = returns_from_wealth(wealth)
     dd, peak_i, trough_i = max_drawdown(wealth)
     growth = cagr(wealth, dates)
-    vol = annualized_vol(rets)
+    vol = annualized_vol(rets, periods=periods)
     calmar = float(growth / abs(dd)) if dd < 0 else None
     mean_tpm, max_tpm = transfers_per_month(post_dates or [])
     dates = pd.DatetimeIndex(dates)
     return {
         "cagr": growth,
         "vol": vol,
-        "sharpe_vs_g": sharpe_vs(rets, g_returns),
-        "sortino_vs_g": sortino_vs(rets, g_returns),
+        "sharpe_vs_g": sharpe_vs(rets, g_returns, periods=periods),
+        "sortino_vs_g": sortino_vs(rets, g_returns, periods=periods),
         "max_drawdown": dd,
         "max_dd_peak": dates[peak_i].strftime("%Y-%m-%d") if len(dates) else None,
         "max_dd_trough": dates[trough_i].strftime("%Y-%m-%d") if len(dates) else None,
         "calmar": calmar,
         "ulcer": ulcer_index(wealth),
-        "worst_12m": worst_12m(wealth, dates),
+        "worst_12m": worst_12m(wealth, dates, sessions=periods),
         "turnover": one_way_turnover(weights),
         "time_in_fund": time_in_funds(weights),
         "whipsaws": count_whipsaws(dominant_fund(weights)),
