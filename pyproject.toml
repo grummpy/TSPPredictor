@@ -1,0 +1,52 @@
+[project]
+name = "tsppredictor"
+version = "0.1.0"
+description = "Educational TSP fund decision support: walk-forward backtests under real interfund-transfer rules. Not financial advice."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "jinja2==3.1.4",
+  "numpy==2.1.3",
+  "pandas==2.2.3",
+  "scikit-learn==1.6.1",
+  "scipy==1.14.1",
+  "click==8.1.8",
+  "typer==0.12.5",
+  "vaderSentiment==3.3.2",
+  "xlrd==2.0.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.3.3", "ruff==0.8.4"]
+
+[project.scripts]
+tsp = "tsppredictor.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tsppredictor*"]
+
+[tool.setuptools.package-data]
+tsppredictor = [
+  "report/templates/*.html",
+  "report/templates/*.j2",
+  "report/static/*.js",
+  "report/static/*.css",
+  "report/static/assets/*",
+  "report/static/vendor/*",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
