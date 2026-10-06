@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TSP Predictor</title>
+  <link rel="icon" href="assets/favicon.svg">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav" aria-label="Sections">
+      <div class="brand">
+        <img src="assets/app-icon.svg" alt="App icon: gold shield with G">
+        <div>
+          <strong>TSP Predictor</strong>
+          <span>Signal · Trend · Protect</span>
+        </div>
+      </div>
+      <button type="button" data-page="today" aria-current="page">Today</button>
+      <button type="button" data-page="scoreboard">Scoreboard</button>
+      <button type="button" data-page="confidence">Confidence</button>
+      <button type="button" data-page="history">History lab</button>
+      <button type="button" data-page="plan">My plan</button>
+      <button type="button" data-page="methods">Data and methods</button>
+    </nav>
+    <main>
+      <p class="advice">{{ not_advice }}</p>
+      <p id="alert" class="banner">Loading the local alert file.</p>
+
+      <section id="today" class="page active">
+        <h1>Today</h1>
+        <p class="muted">Share prices through {{ today.data_as_of }}. Signal date {{ today.signal_date }}.</p>
+        <article class="card">
+          <h2>Why this signal</h2>
+          <p>
+            <span class="stance {{ today.fund }}">{{ today.stance }}</span>
+            <span class="badge {{ today.fund }}">{{ today.fund }}</span>
+          </p>
+          <div class="gauge" aria-label="Signal stance">
+            <span class="{% if today.stance == 'Risk On' %}on{% endif %}">Risk On</span>
+            <span class="{% if today.stance == 'Neutral' %}on{% endif %}">Neutral</span>
+            <span class="{% if today.stance == 'Shelter in G' %}on{% endif %}">Shelter in G</span>
+          </div>
+          <p>Calibrated probability for {{ today.fund }}: {{ today.probability }}.</p>
+          <p>{{ today.calibration_sentence }}</p>
+          <p>{{ today.plain }}</p>
+          <h3>Drivers from the logistic model in the fold that covers this date</h3>
+          <table>
+            <thead><tr><th>Feature</th><th>Value</th><th>Contribution versus G</th><th>Direction</th><th>Meaning</th></tr></thead>
+            <tbody>
+              {% for driver in today.drivers %}
+              <tr>
+                <td>{{ driver.feature }}</td>
+                <td>{{ driver.value }}</td>
+                <td>{{ driver.contribution }}</td>
+                <td>{{ driver.direction }}</td>
+                <td>{{ driver.text }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <h3>What would change the logistic margin versus G</h3>
+          <ul>
+            {% for flip in today.flips %}
+            <li>{{ flip.feature }}: a raw change of {{ flip.raw_change_to_tie_g }} ({{ flip.note }})</li>
+            {% endfor %}
+          </ul>
+          <p class="muted">Logistic argmax on this row: {{ today.logistic_argmax }}. Fold {{ today.fold_start }} to {{ today.fold_end }}. Regularization C = {{ today.logistic_C }}.</p>
+        </article>
+
+        <article class="card" id="ift">
+          <h2>Transfer budget</h2>
+          <p>Two unrestricted interfund transfers per calendar month, counted on the posting date. After those two, only moves that do not decrease the G Fund and do not increase F, C, S, or I. A request before noon Eastern on a TSP business day posts that day. At noon or after, or on a closed day, it posts the next TSP business day.</p>
+          <p id="ift-count">0 of 2 unrestricted transfers used.</p>
+          <p id="ift-state"></p>
+          <div class="meter" id="ift-meter" aria-label="Unrestricted transfers used, then G-only">
+            <span class="pip" data-pip="1"></span>
+            <span class="pip" data-pip="2"></span>
+            <span class="pip g-only" data-pip="g">G only</span>
+          </div>
+          <p id="cutoff"></p>
+          <p id="trap"></p>
+          <form id="ift-form">
+            <label>Account
+              <select id="ift-account">
+                <option value="civilian">civilian</option>
+                <option value="uniformed">uniformed</option>
+              </select>
+            </label>
+            <label>Requested at <input id="ift-when" type="datetime-local"></label>
+            <label>Target
+              <select id="ift-fund">
+                <option>G</option><option>F</option><option>C</option><option>S</option><option>I</option>
+              </select>
+            </label>
+            <button type="submit">Log request on this browser</button>
+          </form>
+          <ul id="ift-log"></ul>
+          <p class="muted">This log stays in local storage. It is not sent anywhere. The backtest uses the same posting-date rule.</p>
+        </article>
+
+        <article class="card">
+          <h2>Data freshness</h2>
+          <p>As of {{ meta.data_as_of }}. Integrity {{ "passed" if meta.integrity_ok else "failed" }}. Reconciliation worst gap {{ meta.stats.recon_worst_pp }} percentage points.</p>
+          <p>{{ meta.vix_note }}</p>
+          <ul>
+            {% for note in meta.notes %}<li>{{ note }}</li>{% endfor %}
+            {% for note in meta.warnings %}<li>{{ note }}</li>{% endfor %}
+          </ul>
+          <p class="muted">Optional cache: {% for name, present in meta.optional_sources.items() %}{{ name }} {{ "present" if present else "absent" }}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+          <p>Current regime: {{ regime }} for {{ regime_sessions }} sessions. Regime is a description, not a prediction.</p>
+        </article>
+      </section>
+
+      <section id="scoreboard" class="page">
+        <h1>Scoreboard</h1>
+        <p>Walk-forward, out of sample, with the two-transfer limit and the execution lag. Verdicts are Beat, Inconclusive, or Underperformed. A negative point estimate is stated even when the interval includes zero.</p>
+        <p>{{ meta.n_trials }} configurations were logged. That count is the trial count in the deflated Sharpe ratio. Trying many variants makes a lucky winner look better than it is.</p>
+        <div class="filters" role="group" aria-label="Cadence and lag">
+          <button type="button" data-cadence="daily" data-lag="1" aria-pressed="true">Daily lag 1</button>
+          <button type="button" data-cadence="daily" data-lag="2" aria-pressed="false">Daily lag 2</button>
+          <button type="button" data-cadence="monthly" data-lag="1" aria-pressed="false">Monthly lag 1</button>
+          <button type="button" data-cadence="monthly" data-lag="2" aria-pressed="false">Monthly lag 2</button>
+        </div>
+        <div class="chart-tools">
+          <button type="button" data-toggle-table="equity-table">Show table</button>
+        </div>
+        <div id="equity-chart" class="chart" role="img" aria-label="Month-end wealth curves for the daily lag-1 scoreboard"></div>
+        <p class="muted">Chart title: month-end wealth, rebased to 1. Horizontal axis: date. Vertical axis: wealth. As of {{ meta.data_as_of }}. Daily models use a 21-session horizon and lag 1. The 63-session horizon is in the table when its lag is 1; filter is by cadence and lag, and horizon is a column.</p>
+        <table id="equity-table" class="data-table">
+          <caption>Month-end wealth</caption>
+          <thead><tr><th>Series</th><th>Date</th><th>Wealth</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <table id="score-table">
+          <caption>Out-of-sample scoreboard as of {{ meta.data_as_of }}</caption>
+          <thead>
+            <tr>
+              <th>Name</th><th>Kind</th><th>Horizon</th><th>Window</th>
+              <th>CAGR</th><th>Max drawdown</th><th>Whipsaws</th>
+              <th>Versus buy-and-hold C</th><th>Versus L 2050</th><th>Versus always G</th><th>Versus static mix</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in scoreboard %}
+            <tr data-cadence="{{ row.cadence }}" data-lag="{{ row.lag }}">
+              <td>{{ row.name }}</td>
+              <td>{{ row.kind }}</td>
+              <td>{{ row.horizon }}</td>
+              <td>{{ row.oos_start }} to {{ row.oos_end }}</td>
+              <td>{{ row.metrics.cagr }}</td>
+              <td>{{ row.metrics.max_drawdown }}</td>
+              <td>{{ row.metrics.whipsaws }}</td>
+              {% for key in ["bh_c", "l2050", "always_g", "static_60_40"] %}
+              <td>
+                {% if row.versus.get(key) %}
+                <span class="verdict {{ row.versus[key].verdict }}">{{ row.versus[key].verdict }}</span>
+                {{ "%.2f"|format(row.versus[key].excess_cagr * 100) }} pp
+                [{{ "%.2f"|format(row.versus[key].ci90[0] * 100) }}, {{ "%.2f"|format(row.versus[key].ci90[1] * 100) }}]
+                {% if row.versus[key].point_estimate_below %}<span>Point estimate is below this baseline.</span>{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+
+      <section id="confidence" class="page">
+        <h1>Confidence</h1>
+        <article class="card">
+          <h2>Calibration</h2>
+          <p>{{ today.calibration_sentence }}</p>
+          <p>Reliability-bin counts sum to {{ calibration.n }} out-of-sample decisions.</p>
+          <div class="chart-tools"><button type="button" data-toggle-table="reliability-table">Show table</button></div>
+          <div id="reliability-chart" class="chart" role="img" aria-label="Reliability diagram"></div>
+          <table id="reliability-table">
+            <caption>Reliability bins as of {{ meta.data_as_of }}. Probability of the class the model ranked first, versus how often that class was the best fund over the horizon.</caption>
+            <thead><tr><th>Low</th><th>High</th><th>N</th><th>Mean predicted</th><th>Empirical rate</th></tr></thead>
+            <tbody>
+              {% for bin in calibration.bins %}
+              <tr>
+                <td>{{ bin.low }}</td>
+                <td>{{ bin.high }}</td>
+                <td>{{ bin.n }}</td>
+                <td>{{ bin.mean_predicted }}</td>
+                <td>{{ bin.empirical_rate }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h2>Cost of being wrong</h2>
+          <p>{{ cost.note }}</p>
+          <p>Fund {{ cost.fund }}. Comparable misses: {{ cost.n_wrong }}. Median excess versus G: {{ cost.median_excess_vs_g }}. Worst 10%: {{ cost.worst_10pct_excess_vs_g }}. Mean excess versus G: {{ cost.mean_excess_vs_g }}.</p>
+          <p>On a hypothetical balance of {{ cost.hypothetical_balance }}, the worst-10% historical excess is {{ cost.hypothetical_dollar_at_worst_10pct }} dollars. That figure is not a forecast.</p>
+        </article>
+        <article class="card">
+          <h2>Missed best days and whipsaws</h2>
+          <p>{{ missed.note }}</p>
+          <table>
+            <caption>Best C Fund sessions in the scored window</caption>
+            <thead><tr><th>Best sessions</th><th>Sat out in G</th><th>Sum of missed simple returns</th></tr></thead>
+            <tbody>
+              {% for row in missed.rows %}
+              <tr><td>{{ row.k }}</td><td>{{ row.missed }}</td><td>{{ row.sum_of_missed_simple_returns }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+      </section>
+
+      <section id="history" class="page">
+        <h1>History lab</h1>
+        <article class="card">
+          <h2>Point-in-time replay</h2>
+          <p>The slider uses walk-forward outputs stored with the build. It does not refit on future prices.</p>
+          <label for="replay">Replay date</label>
+          <input id="replay" type="range" min="0" max="0" value="0">
+          <p id="replay-readout">Loading replay.</p>
+          <button type="button" id="reveal">Reveal what happened next</button>
+          <div id="reveal-box" hidden></div>
+        </article>
+        <article class="card">
+          <h2>Regime ribbon</h2>
+          <p>Current label: {{ regime }} ({{ regime_sessions }} sessions). Labels combine trend, an expanding volatility percentile, and the lagged curve.</p>
+          <div id="ribbon-chart" class="chart" role="img" aria-label="Regime labels by month"></div>
+          <table>
+            <caption>Ensemble hit rate by regime on out-of-sample labeled days</caption>
+            <thead><tr><th>Regime</th><th>N</th><th>Hit rate</th></tr></thead>
+            <tbody>
+              {% for row in regime_table %}
+              <tr><td>{{ row.regime }}</td><td>{{ row.n }}</td><td>{{ row.hit_rate }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h2>Event windows</h2>
+          <p class="warn">{{ events_note }}</p>
+          <table>
+            <caption>Events with a TSP reaction date inside the window used for the study</caption>
+            <thead><tr><th>Category</th><th>N</th></tr></thead>
+            <tbody>
+              {% for row in event_counts %}
+              <tr><td>{{ row.category }}</td><td>{{ row.n }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="muted">Median paths and interquartile bands are in data/history.json under events. Offsets run from -20 to +120 sessions.</p>
+        </article>
+        <article class="card">
+          <h2>Seasonality</h2>
+          {% if seasonality.multiple_testing_warning %}<p class="warn">{{ seasonality.warning }}</p>{% endif %}
+          <table class="heat">
+            <caption>Mean month-of-year excess return over G, with N and t statistic. As of {{ meta.data_as_of }}.</caption>
+            <thead><tr><th>Month</th><th>Fund</th><th>Mean excess</th><th>t</th><th>N</th></tr></thead>
+            <tbody>
+              {% for cell in seasonality.cells %}
+              <tr>
+                <td>{{ cell.month }}</td>
+                <td><span class="badge {{ cell.fund }}">{{ cell.fund }}</span></td>
+                <td>{{ cell.mean_excess }}</td>
+                <td>{{ cell.t_stat }}</td>
+                <td>{{ cell.n }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <h3>Turn of the month versus other sessions</h3>
+          <table>
+            <thead><tr><th>Fund</th><th>Turn mean</th><th>Turn t</th><th>Turn N</th><th>Other mean</th><th>Other t</th><th>Other N</th></tr></thead>
+            <tbody>
+              {% for row in seasonality.turn_of_month %}
+              <tr>
+                <td>{{ row.fund }}</td><td>{{ row.turn_mean }}</td><td>{{ row.turn_t }}</td><td>{{ row.turn_n }}</td>
+                <td>{{ row.other_mean }}</td><td>{{ row.other_t }}</td><td>{{ row.other_n }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <h3>November–April versus May–October</h3>
+          <table>
+            <thead><tr><th>Fund</th><th>Nov–Apr mean</th><th>t</th><th>N</th><th>May–Oct mean</th><th>t</th><th>N</th></tr></thead>
+            <tbody>
+              {% for row in seasonality.halves %}
+              <tr>
+                <td>{{ row.fund }}</td>
+                <td>{{ row.nov_apr_mean }}</td><td>{{ row.nov_apr_t }}</td><td>{{ row.nov_apr_n }}</td>
+                <td>{{ row.may_oct_mean }}</td><td>{{ row.may_oct_t }}</td><td>{{ row.may_oct_n }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+      </section>
+
+      <section id="plan" class="page">
+        <h1>My plan</h1>
+        <article class="card">
+          <h2>Local inputs</h2>
+          <label>Hypothetical balance
+            <input id="balance" type="number" min="0" step="1000" value="100000">
+          </label>
+          <label>Retirement year
+            <input id="retire" type="number" min="2024" max="2085" value="2050">
+          </label>
+          <p id="plan-note"></p>
+          <p class="muted">These values stay in this browser. They are not written to the snapshot.</p>
+        </article>
+        <article class="card">
+          <h2>Retirement crash stress</h2>
+          <p>{{ stress.note }}</p>
+          {% for window in stress.windows %}
+          <h3>{{ window.id }} ({{ window.cadence }})</h3>
+          <table>
+            <caption>{{ window.id }} total return and drawdown</caption>
+            <thead><tr><th>Fund</th><th>Total return</th><th>Max drawdown</th><th>Recovery sessions</th></tr></thead>
+            <tbody>
+              {% for fund, stats in window.funds.items() %}
+              <tr>
+                <td>{{ fund }}</td>
+                <td>{{ stats.total_return }}</td>
+                <td>{{ stats.max_drawdown }}</td>
+                <td>{{ stats.recovery_sessions }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endfor %}
+        </article>
+        <article class="card">
+          <h2>G versus F in rate rises</h2>
+          <p>{{ harbor.note }}</p>
+        </article>
+        <article class="card">
+          <h2>L 2050 x-ray</h2>
+          <p>{{ xray.note }}</p>
+          {% if xray.available %}
+          <p>{{ xray.start }} to {{ xray.end }}, {{ xray.window_sessions }} sessions.</p>
+          <p>
+            {% for fund, weight in xray.weights.items() %}
+            <span class="badge {{ fund }}">{{ fund }} {{ weight }}</span>
+            {% endfor %}
+          </p>
+          {% endif %}
+        </article>
+        <article class="card">
+          <h2>Range of outcomes</h2>
+          <p>{{ today.fan.note }}</p>
+          {% if today.fan.available %}
+          <table>
+            <caption>Block-bootstrap terminal wealth of the current signal's fund</caption>
+            <thead><tr><th>Horizon</th><th>10th</th><th>25th</th><th>50th</th><th>75th</th><th>90th</th></tr></thead>
+            <tbody>
+              {% for name, path in today.fan.paths.items() %}
+              <tr>
+                <td>{{ name }}</td><td>{{ path.p10 }}</td><td>{{ path.p25 }}</td><td>{{ path.p50 }}</td><td>{{ path.p75 }}</td><td>{{ path.p90 }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </article>
+        <article class="card">
+          <h2>Decision journal</h2>
+          <form id="journal-form">
+            <label>Date <input id="j-date" type="date" required></label>
+            <label>Fund
+              <select id="j-fund"><option>G</option><option>F</option><option>C</option><option>S</option><option>I</option></select>
+            </label>
+            <label>Reason <input id="j-reason" type="text"></label>
+            <label>Your confidence, 0 to 1 <input id="j-conf" type="number" min="0" max="1" step="0.01" value="0.5"></label>
+            <button type="submit">Save in this browser</button>
+          </form>
+          <button type="button" id="j-export">Export journal</button>
+          <label>Import journal <input id="j-import" type="file" accept="application/json"></label>
+          <pre id="j-list"></pre>
+          <p class="muted">The same journal can be appended from the command line with tsp journal add, which writes data/user/journal.jsonl on this machine.</p>
+        </article>
+      </section>
+
+      <section id="methods" class="page">
+        <h1>Data and methods</h1>
+        <article class="card">
+          <h2>What this is</h2>
+          <p>{{ not_advice }} It does not log into a TSP account and it does not place trades.</p>
+          <p>Most timing strategies lose to buy-and-hold. An independent review of TSP allocation services found that none beat holding the C Fund in 2019 (<a class="citation" href="https://www.barfieldfinancial.com/new-blog/2019-results-who-beat-the-market">Barfield Financial, 2019</a>). Morningstar's 2025 Mind the Gap study found that the average fund dollar earned about 1.2 percentage points a year less than the funds' own returns over the decade through 2024, largely from timing (<a class="citation" href="https://www.morningstar.com/financial-advisors/volatility-bedevils-fund-investors">Morningstar</a>).</p>
+        </article>
+        <article class="card">
+          <h2>Rules modeled</h2>
+          <ul>
+            <li>Two unrestricted interfund transfers per calendar month, counted on the posting date (<a class="citation" href="https://www.ecfr.gov/current/title-5/section-1601.32">5 CFR 1601.32</a>).</li>
+            <li>After those two, only moves that do not decrease G and do not increase any other fund. Moving to 100% G qualifies, as does a pro-rata increase in G.</li>
+            <li>Before noon Eastern on a TSP business day, the request posts that day. At noon or later, it posts the next business day (<a class="citation" href="https://www.tsp.gov/how-to-change-your-tsp-investments/">TSP: how to change investments</a>).</li>
+            <li>The limit began May 1, 2008 (<a class="citation" href="https://www.govinfo.gov/content/pkg/FR-2008-04-24/html/E8-8957.htm">Federal Register, April 24, 2008</a>).</li>
+            <li>The default backtest waits one TSP session: the signal uses the close of t, the post is the close of t+1, and the new mix earns from t+2. Lag 2 is the after-noon case.</li>
+            <li>Historical business days are the dates in the share-price file, not the NYSE calendar. Later dates are a labeled projection.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Feature dictionary</h2>
+          <table>
+            <caption>Features, sources, and publication lags</caption>
+            <thead><tr><th>Name</th><th>Source</th><th>Publication lag</th><th>In the model</th><th>Description</th></tr></thead>
+            <tbody>
+              {% for feature in features %}
+              <tr>
+                <td>{{ feature.name }}</td>
+                <td>{{ feature.source }}</td>
+                <td>{{ feature.publication_lag }}</td>
+                <td>{{ "yes" if feature.model else "no" }}</td>
+                <td>{{ feature.description }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </article>
+        <article class="card">
+          <h2>Limitations</h2>
+          <ul>
+            <li>Macro series are the latest vintage, not the vintage that was published on the day.</li>
+            <li>Daily share prices start in 2003. Monthly returns start in 1987. S and I start later.</li>
+            <li>The I Fund changed benchmark on 2024-10-30. Results are split there. A one-session rule that buys I after a large C Fund up day is flagged and is not a strategy.</li>
+            <li>Event studies are small samples. Each event is different.</li>
+            <li>The regime label and the Gaussian mixture are descriptive.</li>
+            <li>Turn-of-month and pre-holiday flags use a scheduled calendar, so an unscheduled closure can disagree with the price file.</li>
+            <li>FRED copies, if fetched, are for exploration. Models are not trained on FRED. VIX is local-only and falls back to realized volatility.</li>
+            <li>NBER dates are not model features. The NY Fed recession probability, when cached, is shifted back 12 months.</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="vendor/plotly.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

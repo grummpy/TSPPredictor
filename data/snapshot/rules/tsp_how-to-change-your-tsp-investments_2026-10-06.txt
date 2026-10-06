@@ -1,0 +1,73 @@
+ 
+ Home 
+ How to change your TSP investments 
+How to change your TSP investments 
+Overview 
+There are three ways to change the way money in your TSP account is invested: investment election, reallocation, and fund transfer. You can complete these transactions by logging in to My Account or by using one of the ThriftLine options . If we have a valid email address for you on file, we’ll send you an email confirmation when you change your TSP investments. 
+Change your TSP investment mix 
+Investment election 
+An investment election allows you to invest new money going into your TSP account. Your investment election applies to all future deposits to your account. These include employee contributions; agency/service contributions (if you’re FERS or BRS); any special pay, incentive pay, or bonus pay that you contribute as a member of the uniformed services; any rollovers to the TSP from other retirement plans; and any TSP loan payments. Your investment election won’t affect money that’s already in your account. Your investment election will remain in effect until you submit a new one. 
+Any change to your investment election will ordinarily be effective the next business day. 
+Reallocation 
+A reallocation allows you to move money already in your account among the TSP funds . When you make a reallocation, you choose the new percentage you want to invest in each fund. You can’t move specific sources of money among the funds. For example, if you have traditional (including tax-exempt) and Roth money in your account, your reallocation will move a proportional amount from each type of money into the funds that you specify. 
+Any reallocation you make before noon eastern time is generally processed that business day. 
+Example reallocation
+A participant wants to further diversify her investments in the C Fund and the S Fund by moving some of her current savings into the F Fund. By choosing a reallocation, she’ll select the percentage she wants to invest in each fund so that her entire account gets redistributed in this way: 
+ Fund 
+ Current percentage 
+ New percentage 
+ C Fund 
+ 60% 
+ 50% 
+ S Fund 
+ 40% 
+ 30% 
+ F Fund 
+ 0% 
+ 20% 
+ Total 
+ 100% 
+ 100% 
+Move money between TSP funds 
+Fund transfer 
+A fund transfer moves money from one or more specific funds to another specific fund or funds without affecting the rest of your account. As with a reallocation, your fund transfer will move a proportional amount of any traditional or Roth money you have into the fund or funds you specify. Fund transfers are also how you move money to and from the mutual fund window . 
+Any fund transfer you make before noon eastern time is generally processed that business day. 
+Example fund transfer
+A participant wants to further diversify her investments in the C Fund and the S Fund by moving some of her current savings into the F Fund. By choosing a fund transfer, she can specify the dollar amount or percentage she wants to move from the C Fund, the S Fund, or both. 
+She decides to transfer money directly from the C Fund to the F Fund without moving money from the S Fund: 
+She first takes 20% (or $120) out of the C Fund. 
+She places 100% of the $120 in the F Fund. 
+ Fund 
+ Current percentage 
+ Moved out 
+ Moved in 
+ New balance 
+ C Fund 
+ $600 
+ 20% 
+ $480 
+ S Fund 
+ $400 
+ $400 
+ F Fund 
+ $0 
+ 100% 
+ $120 
+ Total 
+ $1,000 
+ $1,000 
+Note: This is a simplified example of a fund transfer. The current balance may change between the time the participant requests a fund transfer and the time it’s executed. However, the new balance after execution will always equal the current balance at the time of execution. In other words, the act of executing a fund transfer won’t generate any gains or losses. 
+Reallocations and fund transfers are limited 
+Each calendar month, your first two reallocations or fund transfers may be used to redistribute money in your account among any of the TSP funds. After the first two of either type of transaction, for the remainder of the month, you can only move money into the G Fund. If you have both a civilian and a uniformed services account, these rules apply to each account separately. 
+Related resources 
+Investing strategies 
+Start early, save consistently, and manage investment risk over time to help your retirement savings grow and support your long-term goals. 
+ Go to page 
+Booklets and guides 
+TSP Fund Information Sheets 
+Investment goals and risks for each TSP fund. 
+ Open booklet 
+Summary of the TSP 
+Your essential guide to the TSP. 
+ Open booklet 
+ 
