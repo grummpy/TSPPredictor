@@ -105,3 +105,34 @@ def test_17_purge_and_embargo():
                 last = last_train_index(test_start, h, lag)
                 assert label_price_end(last, h, lag) < test_start
                 assert test_start - last > (h + lag)
+
+
+def test_lagged_reversal_accounts_for_pending_transfer():
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    targets = np.vstack([one_hot("C")] + [one_hot("G")] * 5)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    assert sim["post_dates"] == [dates[2], dates[3]]
+    assert sim["month_used"] == {"2024-01": 2}
+    assert np.argmax(sim["weights"][3]) == 2
+    assert np.argmax(sim["weights"][4]) == 0
+
+
+def test_repeated_pending_target_does_not_consume_transfers():
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    targets = np.vstack([one_hot("C")] * 6)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    assert sim["post_dates"] == [dates[2]]
+    assert sim["month_used"] == {"2024-01": 1}
+
+
+def test_g_only_limit_uses_pending_allocation():
+    dates = pd.bdate_range("2024-01-02", periods=7)
+    initial = np.array([0.0, 0.0, 0.5, 0.5, 0.0])
+    targets = np.full((7, 5), np.nan)
+    targets[0] = one_hot("C")
+    targets[1] = one_hot("S")
+    targets[2] = [0.5, 0.0, 0.0, 0.5, 0.0]
+    sim = simulate_targets(dates, targets, lag=2, initial=initial)
+    assert sim["post_dates"] == [dates[2], dates[3], dates[4]]
+    assert sim["month_used"] == {"2024-01": 2}
+    assert np.allclose(sim["weights"][5], targets[2])

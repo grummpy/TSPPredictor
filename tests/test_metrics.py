@@ -2,9 +2,21 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
+from tsppredictor.backtest.honesty import verdict
 from tsppredictor.backtest.metrics import cagr, max_drawdown, one_way_turnover
 from tsppredictor.backtest.walkforward import constant_fund_path, one_hot, simulate_targets
+
+
+@pytest.mark.parametrize("dsr", [None, 0.94, np.nan])
+def test_positive_interval_without_sufficient_dsr_is_inconclusive(dsr):
+    assert verdict(0.02, [0.01, 0.03], dsr) == "Inconclusive"
+
+
+def test_verdict_dsr_threshold_and_underperformance():
+    assert verdict(0.02, [0.01, 0.03], 0.95) == "Beat"
+    assert verdict(-0.02, [-0.03, -0.01], None) == "Underperformed"
 
 
 def test_18_toy_series_matches_hand_calculation():

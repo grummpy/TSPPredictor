@@ -92,7 +92,7 @@ def simulate_targets(
         else:
             initial = one_hot("G")
     initial = np.asarray(initial, dtype=float)
-    current = initial.copy()
+    effective = initial.copy()
     posts: dict[int, np.ndarray] = {}
     last_switch = -10**9
     month_used: dict[str, int] = {}
@@ -100,14 +100,12 @@ def simulate_targets(
     day_keys = [pd.Timestamp(ts).date() for ts in dates]
 
     for t in range(n):
-        if t in posts:
-            current = posts[t]
         desired = targets[t]
         if not np.isfinite(desired).all():
             continue
         if abs(desired.sum() - 1.0) > 1e-6 and desired.sum() > 0:
             desired = desired / desired.sum()
-        if np.allclose(desired, current, atol=1e-6):
+        if np.allclose(desired, effective, atol=1e-6):
             continue
         to_g = desired[0] >= 0.999 and np.allclose(desired[1:], 0.0, atol=1e-8)
         if min_hold and (t - last_switch) < min_hold and not to_g:
@@ -119,11 +117,13 @@ def simulate_targets(
             posted_on: date = day_keys[post_idx]
             month = f"{posted_on.year:04d}-{posted_on.month:02d}"
             used = month_used.get(month, 0)
-            if used >= 2 and not is_g_only_move(current, desired):
+            if used >= 2 and not is_g_only_move(effective, desired):
                 continue
             if used < 2:
                 month_used[month] = used + 1
         posts[post_idx] = desired.copy()
+        # Fixed lag preserves posting order, so the latest queued mix is effective.
+        effective = desired.copy()
         last_switch = t
         post_dates.append(dates[post_idx])
 
