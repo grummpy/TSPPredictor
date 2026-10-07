@@ -46,6 +46,7 @@ from tsppredictor.models.ensemble import average_probabilities, best_rule_probab
 from tsppredictor.models.ml import explain_snapshot, walk_forward_models
 from tsppredictor.models.regimes import rule_regime_labels, walk_forward_gmm
 from tsppredictor.models.rules import RULES, all_rules
+from tsppredictor.monthly_history import build_monthly_history
 from tsppredictor.paths import cache_dir, dist_dir, snapshot_dir
 from tsppredictor.studies import (
     cost_of_being_wrong,
@@ -464,7 +465,7 @@ def _run_block(spec, features, prices, l2050: pd.Series, n_trials_box: list[int]
     return {
         "rows": rows,
         "trials": ml["trials"],
-        "curve": curve if spec.get("primary") else {},
+        "curve": curve,
         "detail": detail,
         "oos_start": _iso(oos_start),
         "oos_end": _iso(oos_end),
@@ -813,7 +814,7 @@ def run_build() -> dict:
     n_trials_box = [0]
     scoreboard: list[dict] = []
     trials: list[dict] = []
-    curves = {}
+    curve_views = {}
     detail = None
     for spec in BLOCKS:
         if spec["cadence"] == "daily":
@@ -823,7 +824,18 @@ def run_build() -> dict:
         scoreboard.extend(result["rows"])
         trials.extend(result["trials"])
         if result.get("curve"):
-            curves = result["curve"]
+            view_key = f"{spec['cadence']}-lag-{spec['lag']}"
+            # Daily lag 1 also has a 63-session scoreboard row. The chart stays
+            # on the documented 21-session primary horizon for that selector.
+            curve_views.setdefault(
+                view_key,
+                {
+                    "cadence": spec["cadence"],
+                    "lag": spec["lag"],
+                    "horizon": spec["h"],
+                    "series": result["curve"],
+                },
+            )
         if result.get("detail"):
             detail = result["detail"]
     if detail is None:
@@ -835,6 +847,7 @@ def run_build() -> dict:
         detail["calibration"]["bins"], detail["probability"] if detail["probability"] is not None else 0.0
     )
     as_of = _iso(prices.index.max())
+    monthly_history = build_monthly_history(snap.monthly, as_of)
     _log("studies")
     events = event_window_study(prices, snap.events)
     spikes = gpr_spike_study(prices, features["gpr_spike"])
@@ -928,7 +941,16 @@ def run_build() -> dict:
     _dump(data / "stress.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of, "stress": stress, "g_versus_f": harbor, "l_xray": xray})
     _dump(data / "trials.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of, "n_trials": n_trials_box[0], "trials": trials})
     _dump(data / "features.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of, "features": feature_dicts()})
-    _dump(data / "curves.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of, "series": curves, "note": "Month-end wealth, rebased to 1 at the start of each series' scored window. Daily models, 21-session horizon, lag 1."})
+    _dump(
+        data / "curves.json",
+        {
+            "schema_version": SCHEMA_VERSION,
+            "data_as_of": as_of,
+            "views": curve_views,
+            "note": "Historical, out-of-sample backtest wealth. Each view is rebased to 1 at the start of its scored window and is not a forecast.",
+        },
+    )
+    _dump(data / "monthly-history.json", monthly_history)
     returns = prices[list(FUNDS)].pct_change()
     returns.iloc[0] = 0.0
     payload_returns = {

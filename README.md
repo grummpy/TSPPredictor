@@ -23,6 +23,12 @@ Open the address the server prints. It listens on 127.0.0.1 only.
 
 `tsp build` reads `data/snapshot/` and writes `dist/`. It does not need a network. The first build fits the walk-forward models and is the slow step.
 
+## Local dashboard
+
+The **History lab** separates factual, bundled TSP.gov monthly fund returns from the experimental model backtests. It opens to the trailing 120 completed calendar months, lets you choose a fund and month range, and can display either the official monthly return or compounded wealth for the selected range. Newer funds retain explicit missing months and their first available month rather than treating absent history as a zero return.
+
+The **Scoreboard** only shows historical out-of-sample backtests. Its daily/monthly and lag selectors switch to the corresponding stored curve and disclose the associated horizon; those curves are not forecasts or recommendations.
+
 Optional refresh of the TSP.gov files (one download per file, at most once per Eastern calendar day unless `--force`):
 
 ```bash
