@@ -31,27 +31,48 @@
   }
 
   const plotConfig = { displaylogo: false, responsive: true };
+  let curvesPayload = null;
+  let activeCadence = "daily";
+  let activeLag = "1";
 
-  function drawCurves(payload) {
+  function lagDescription(cadence, lag) {
+    const amount = Number(lag);
+    if (cadence === "monthly") return amount === 1 ? "one monthly row" : amount + " monthly rows";
+    return amount === 1 ? "one daily session" : amount + " daily sessions";
+  }
+
+  function drawCurves(payload, cadence, lag) {
     const node = document.getElementById("equity-chart");
-    if (!node || !window.Plotly || !payload || !payload.series) return;
+    const note = document.getElementById("equity-chart-note");
+    const body = document.querySelector("#equity-table tbody");
+    const caption = document.querySelector("#equity-table caption");
+    if (!node || !window.Plotly) return;
+    const key = cadence + "-lag-" + lag;
+    const view = payload && payload.views ? payload.views[key] : null;
+    if (!view || !view.series) {
+      window.Plotly.purge(node);
+      node.textContent = "No historical backtest curve was produced for this cadence and lag.";
+      if (note) note.textContent = "The scoreboard remains available, but this curve has no matching historical series.";
+      if (body) body.replaceChildren();
+      return;
+    }
     const traces = [];
     const tableRows = [];
-    Object.keys(payload.series).forEach((key) => {
-      const series = payload.series[key];
+    Object.keys(view.series).forEach((seriesKey) => {
+      const series = view.series[seriesKey];
       traces.push({
         type: "scatter",
         mode: "lines",
-        name: key,
+        name: seriesKey,
         x: series.dates,
         y: series.wealth,
       });
       series.dates.forEach((date, i) => {
-        tableRows.push([key, date, series.wealth[i]]);
+        tableRows.push([seriesKey, date, series.wealth[i]]);
       });
     });
-    window.Plotly.newPlot(node, traces, {
-      title: "Month-end wealth (rebased to 1)",
+    window.Plotly.react(node, traces, {
+      title: "Month-end backtest wealth: " + view.cadence + ", " + lagDescription(view.cadence, view.lag),
       paper_bgcolor: "#0b1528",
       plot_bgcolor: "#0b1528",
       font: { color: "#e7eef8" },
@@ -60,7 +81,11 @@
       legend: { orientation: "h" },
       margin: { t: 48 },
     }, plotConfig);
-    const body = document.querySelector("#equity-table tbody");
+    node.setAttribute("aria-label", "Month-end wealth curves for the selected " + view.cadence + " backtest with " + lagDescription(view.cadence, view.lag));
+    if (note) {
+      note.textContent = "Historical out-of-sample backtest wealth, rebased to 1. " + view.cadence + " cadence with " + lagDescription(view.cadence, view.lag) + "; " + view.horizon + "-" + (view.cadence === "monthly" ? "month" : "session") + " horizon. This is not a forecast.";
+    }
+    if (caption) caption.textContent = "Month-end backtest wealth: " + view.cadence + ", " + lagDescription(view.cadence, view.lag);
     if (body) {
       body.replaceChildren();
       tableRows.forEach((row) => {
@@ -108,6 +133,8 @@
 
   const filterButtons = document.querySelectorAll(".filters button");
   function applyFilter(cadence, lag) {
+    activeCadence = cadence;
+    activeLag = String(lag);
     document.querySelectorAll("#score-table tbody tr").forEach((row) => {
       const ok = row.getAttribute("data-cadence") === cadence && row.getAttribute("data-lag") === String(lag);
       row.hidden = !ok;
@@ -116,6 +143,7 @@
       const on = button.getAttribute("data-cadence") === cadence && button.getAttribute("data-lag") === String(lag);
       button.setAttribute("aria-pressed", on ? "true" : "false");
     });
+    if (curvesPayload) drawCurves(curvesPayload, cadence, lag);
   }
   filterButtons.forEach((button) => {
     button.addEventListener("click", () => applyFilter(button.getAttribute("data-cadence"), button.getAttribute("data-lag")));
@@ -280,6 +308,118 @@
     });
   }
 
+  function displayMonth(value) {
+    const bits = String(value || "").split("-");
+    const month = Number(bits[1]);
+    const names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return names[month - 1] ? names[month - 1] + " " + bits[0] : String(value || "unknown month");
+  }
+
+  function compoundMonthlyReturns(values) {
+    let wealth = 1;
+    let started = false;
+    let interrupted = false;
+    return values.map((value) => {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+        if (started) interrupted = true;
+        return null;
+      }
+      if (interrupted) return null;
+      wealth *= 1 + (Number(value) / 100);
+      started = true;
+      return wealth;
+    });
+  }
+
+  function renderMonthlyHistory(payload) {
+    const fundSelect = document.getElementById("monthly-history-fund");
+    const startSelect = document.getElementById("monthly-history-start");
+    const endSelect = document.getElementById("monthly-history-end");
+    const modeSelect = document.getElementById("monthly-history-mode");
+    const status = document.getElementById("monthly-history-status");
+    const chart = document.getElementById("monthly-history-chart");
+    const body = document.querySelector("#monthly-history-table tbody");
+    if (!fundSelect || !startSelect || !endSelect || !modeSelect || !status || !chart || !body || !payload || !payload.months || !payload.funds) return;
+
+    const months = payload.months;
+    const fundIds = Object.keys(payload.funds);
+    function option(value, label) {
+      const node = document.createElement("option");
+      node.value = value;
+      node.textContent = label;
+      return node;
+    }
+    fundIds.forEach((fundId) => fundSelect.appendChild(option(fundId, payload.funds[fundId].label)));
+    months.forEach((month) => {
+      startSelect.appendChild(option(month, displayMonth(month)));
+      endSelect.appendChild(option(month, displayMonth(month)));
+    });
+    fundSelect.value = payload.funds.C ? "C" : fundIds[0];
+    startSelect.value = payload.window_start || months[0];
+    endSelect.value = payload.window_end || months[months.length - 1];
+
+    function paint() {
+      const start = Math.max(0, months.indexOf(startSelect.value));
+      const end = Math.max(start, months.indexOf(endSelect.value));
+      const selectedMonths = months.slice(start, end + 1);
+      const fund = payload.funds[fundSelect.value];
+      const returns = fund.return_pct.slice(start, end + 1);
+      const wealth = compoundMonthlyReturns(returns);
+      const isWealth = modeSelect.value === "wealth";
+      const values = isWealth ? wealth : returns;
+      const missing = selectedMonths.filter((month, index) => returns[index] === null || returns[index] === undefined);
+      const firstInRange = selectedMonths.find((month, index) => returns[index] !== null && returns[index] !== undefined);
+      let message = fund.label + " official monthly returns from " + payload.source + ". " + displayMonth(selectedMonths[0]) + " through " + displayMonth(selectedMonths[selectedMonths.length - 1]) + ". Data as of " + payload.data_as_of + "; completed monthly returns through " + displayMonth(payload.monthly_returns_through) + ".";
+      if (fund.first_available) message += " TSP's first bundled return for this fund is " + displayMonth(fund.first_available) + ".";
+      if (!firstInRange) message += " No published returns are available for this fund in the selected range.";
+      else if (firstInRange !== selectedMonths[0]) message += " Values before " + displayMonth(firstInRange) + " are unavailable and shown as dashes.";
+      if (missing.length) message += " Missing published months are shown as dashes; cumulative wealth does not bridge an internal gap.";
+      if (isWealth) message += " Compounded wealth multiplies each actual monthly return and is not a forecast.";
+      status.textContent = message;
+
+      window.Plotly.react(chart, [{
+        type: "scatter",
+        mode: "lines+markers",
+        name: fund.label,
+        x: selectedMonths,
+        y: values,
+        connectgaps: false,
+      }], {
+        title: isWealth ? fund.label + " compounded monthly wealth" : fund.label + " official monthly return",
+        paper_bgcolor: "#0b1528",
+        plot_bgcolor: "#0b1528",
+        font: { color: "#e7eef8" },
+        xaxis: { title: "Completed calendar month" },
+        yaxis: { title: isWealth ? "Wealth (selected start = 1)" : "Return (%)", ticksuffix: isWealth ? "" : "%" },
+        margin: { t: 48 },
+      }, plotConfig);
+      chart.setAttribute("aria-label", fund.label + " official monthly history from " + selectedMonths[0] + " to " + selectedMonths[selectedMonths.length - 1]);
+
+      body.replaceChildren();
+      selectedMonths.forEach((month, index) => {
+        const row = document.createElement("tr");
+        [displayMonth(month), returns[index] === null || returns[index] === undefined ? "—" : Number(returns[index]).toFixed(2) + "%", wealth[index] === null || wealth[index] === undefined ? "—" : Number(wealth[index]).toFixed(4)].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+        body.appendChild(row);
+      });
+    }
+
+    startSelect.addEventListener("change", () => {
+      if (months.indexOf(startSelect.value) > months.indexOf(endSelect.value)) endSelect.value = startSelect.value;
+      paint();
+    });
+    endSelect.addEventListener("change", () => {
+      if (months.indexOf(endSelect.value) < months.indexOf(startSelect.value)) startSelect.value = endSelect.value;
+      paint();
+    });
+    fundSelect.addEventListener("change", paint);
+    modeSelect.addEventListener("change", paint);
+    paint();
+  }
+
   function renderReplay(history) {
     const slider = document.getElementById("replay");
     const readout = document.getElementById("replay-readout");
@@ -398,7 +538,11 @@
     if (node && alert && alert.message) node.textContent = alert.message;
   }).catch(() => {});
 
-  load("curves.json").then(drawCurves).catch(() => {});
+  load("curves.json").then((payload) => {
+    curvesPayload = payload;
+    drawCurves(curvesPayload, activeCadence, activeLag);
+  }).catch(() => {});
+  load("monthly-history.json").then(renderMonthlyHistory).catch(() => {});
   load("calibration.json").then(drawReliability).catch(() => {});
   load("calendar.json").then((calendar) => {
     (calendar.observed || []).forEach((day) => business.add(day));

@@ -115,19 +115,20 @@
 
       <section id="scoreboard" class="page">
         <h1>Scoreboard</h1>
-        <p>Walk-forward, out of sample, with the two-transfer limit and the execution lag. Verdicts are Beat, Inconclusive, or Underperformed. A negative point estimate is stated even when the interval includes zero.</p>
+        <p>Walk-forward, out of sample, with the two-transfer limit and the execution lag. Daily selectors state lag in daily sessions; monthly selectors state lag in monthly rows. The monthly labels do not reinterpret the after-noon, two-session rule described in Data and methods. Verdicts are Beat, Inconclusive, or Underperformed. A negative point estimate is stated even when the interval includes zero.</p>
         <p>{{ meta.n_trials }} configurations were logged. That count is the trial count in the deflated Sharpe ratio. Trying many variants makes a lucky winner look better than it is.</p>
+        <p class="warn">These are experimental historical backtests, not reliable forecasts or recommendations. The official fund-return history in History lab is separate from these model results.</p>
         <div class="filters" role="group" aria-label="Cadence and lag">
-          <button type="button" data-cadence="daily" data-lag="1" aria-pressed="true">Daily lag 1</button>
-          <button type="button" data-cadence="daily" data-lag="2" aria-pressed="false">Daily lag 2</button>
-          <button type="button" data-cadence="monthly" data-lag="1" aria-pressed="false">Monthly lag 1</button>
-          <button type="button" data-cadence="monthly" data-lag="2" aria-pressed="false">Monthly lag 2</button>
+          <button type="button" data-cadence="daily" data-lag="1" aria-pressed="true">Daily lag 1 session</button>
+          <button type="button" data-cadence="daily" data-lag="2" aria-pressed="false">Daily lag 2 sessions</button>
+          <button type="button" data-cadence="monthly" data-lag="1" aria-pressed="false">Monthly lag 1 row</button>
+          <button type="button" data-cadence="monthly" data-lag="2" aria-pressed="false">Monthly lag 2 rows</button>
         </div>
         <div class="chart-tools">
           <button type="button" data-toggle-table="equity-table">Show table</button>
         </div>
-        <div id="equity-chart" class="chart" role="img" aria-label="Month-end wealth curves for the daily lag-1 scoreboard"></div>
-        <p class="muted">Chart title: month-end wealth, rebased to 1. Horizontal axis: date. Vertical axis: wealth. As of {{ meta.data_as_of }}. Daily models use a 21-session horizon and lag 1. The 63-session horizon is in the table when its lag is 1; filter is by cadence and lag, and horizon is a column.</p>
+        <div id="equity-chart" class="chart" role="img" aria-label="Month-end wealth curves for the selected backtest"></div>
+        <p id="equity-chart-note" class="muted">Loading the historical backtest curve for the selected cadence and lag.</p>
         <table id="equity-table" class="data-table">
           <caption>Month-end wealth</caption>
           <thead><tr><th>Series</th><th>Date</th><th>Wealth</th></tr></thead>
@@ -215,6 +216,37 @@
 
       <section id="history" class="page">
         <h1>History lab</h1>
+        <article class="card">
+          <h2>Official monthly fund returns</h2>
+          <p>This is factual TSP.gov monthly return history from the bundled public snapshot. It is separate from the experimental models, signals, and backtests elsewhere in this dashboard.</p>
+          <div class="history-controls" aria-label="Official monthly return history controls">
+            <label>Fund
+              <select id="monthly-history-fund" aria-label="Fund"></select>
+            </label>
+            <label>Start month
+              <select id="monthly-history-start" aria-label="Start month"></select>
+            </label>
+            <label>End month
+              <select id="monthly-history-end" aria-label="End month"></select>
+            </label>
+            <label>Chart
+              <select id="monthly-history-mode" aria-label="Chart measure">
+                <option value="return">Monthly return (%)</option>
+                <option value="wealth">Compounded wealth (start = 1)</option>
+              </select>
+            </label>
+          </div>
+          <p id="monthly-history-status" class="muted">Loading bundled official monthly returns.</p>
+          <div id="monthly-history-chart" class="chart" role="img" aria-label="Official monthly TSP fund return history"></div>
+          <div class="table-scroll">
+            <table id="monthly-history-table">
+              <caption>Official monthly returns and compounded wealth</caption>
+              <thead><tr><th>Month</th><th>Official return</th><th>Compounded wealth</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="muted">A dash means TSP did not publish a return for that fund/month. The compounded series begins at the fund's first available month in the selected range and stops after an internal gap rather than assuming a zero return.</p>
+        </article>
         <article class="card">
           <h2>Point-in-time replay</h2>
           <p>The slider uses walk-forward outputs stored with the build. It does not refit on future prices.</p>

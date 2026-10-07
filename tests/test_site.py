@@ -28,6 +28,7 @@ def test_25_build_outputs_and_no_remote_assets(built):
         "scoreboard.json",
         "calibration.json",
         "history.json",
+        "monthly-history.json",
         "trials.json",
         "features.json",
     ):
@@ -62,6 +63,28 @@ def test_25_build_outputs_and_no_remote_assets(built):
         for comparison in row["versus"].values():
             assert comparison["verdict"] in {"Beat", "Inconclusive", "Underperformed"}
             assert len(comparison["ci90"]) == 2
+
+    curves = json.loads((dist / "data" / "curves.json").read_text())
+    for key in ("daily-lag-1", "daily-lag-2", "monthly-lag-1", "monthly-lag-2"):
+        assert curves["views"][key]["series"]
+    monthly_history = json.loads((dist / "data" / "monthly-history.json").read_text())
+    assert monthly_history["kind"] == "official_monthly_returns"
+    assert monthly_history["completed_month_count"] == 120
+    assert monthly_history["months"] == sorted(monthly_history["months"])
+    assert monthly_history["window_end"] < monthly_history["data_as_of"][:7]
+    for fund in monthly_history["funds"].values():
+        assert len(fund["return_pct"]) == 120
+        assert len(fund["cumulative_wealth"]) == 120
+    c_history = monthly_history["funds"]["C"]
+    assert c_history["cumulative_wealth"][0] == pytest.approx(1 + c_history["return_pct"][0] / 100)
+    assert "monthly-history.json" in script
+    assert "payload.views" in script
+    assert "drawCurves(curvesPayload, cadence, lag)" in script
+    assert "one monthly row" in script
+    assert "one daily session" in script
+    assert 'id="monthly-history-start"' in html
+    assert "Monthly lag 1 row" in html
+    assert "Monthly lag 2 rows" in html
 
 
 def test_26_serve_binds_loopback_only(built):

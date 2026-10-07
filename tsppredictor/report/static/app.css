@@ -196,9 +196,20 @@ th { color: var(--gold); font-weight: 600; }
 .filters button, .chart-tools button { cursor: pointer; padding: 0.35rem 0.6rem; }
 .filters button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
 
+.history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: end;
+  margin: 0.8rem 0;
+}
+.history-controls label { display: grid; gap: 0.25rem; color: var(--muted); }
+
 .chart { min-height: 18rem; background: #0b1528; border-radius: 0.4rem; }
 .data-table { display: none; overflow: auto; max-height: 24rem; }
 .data-table.open { display: block; }
+.table-scroll { max-height: 24rem; overflow: auto; border: 1px solid var(--line); border-radius: 0.4rem; }
+.table-scroll table { min-width: 34rem; }
 
 .heat { border-collapse: collapse; }
 .heat td, .heat th { min-width: 2.4rem; text-align: center; }
