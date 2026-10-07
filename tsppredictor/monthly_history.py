@@ -102,7 +102,16 @@ def build_monthly_history(
     completed = _completed_month_frame(monthly, data_as_of)
     if completed.empty:
         raise ValueError("no completed official monthly-return rows are available")
-    window = completed.tail(months).copy()
+
+    # The window is a calendar window, not the last 120 rows that happened to
+    # be present in the CSV. Reindexing makes an entirely absent source month
+    # visible to the dashboard as missing data instead of silently extending
+    # the history farther into the past.
+    cutoff = pd.Timestamp(data_as_of).to_period("M")
+    window_periods = pd.period_range(end=cutoff - 1, periods=months, freq="M")
+    window = completed.set_index("_period").reindex(window_periods)
+    window["_period"] = window.index
+    window["month"] = window.index.astype(str)
     month_keys = window["month"].tolist()
     payload_funds: dict[str, dict] = {}
     for fund_id, label, column in funds:
@@ -131,7 +140,7 @@ def build_monthly_history(
         "source": "TSP.gov published monthly return summary bundled with this local snapshot",
         "source_file": "data/snapshot/tsp_monthly_returns_pct.csv",
         "data_as_of": pd.Timestamp(data_as_of).strftime("%Y-%m-%d"),
-        "monthly_returns_through": month_keys[-1],
+        "monthly_returns_through": completed["month"].iloc[-1],
         "window_start": month_keys[0],
         "window_end": month_keys[-1],
         "completed_month_count": len(month_keys),

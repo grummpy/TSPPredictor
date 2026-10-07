@@ -35,6 +35,12 @@
   let activeCadence = "daily";
   let activeLag = "1";
 
+  function lagDescription(cadence, lag) {
+    const amount = Number(lag);
+    if (cadence === "monthly") return amount === 1 ? "one monthly row" : amount + " monthly rows";
+    return amount === 1 ? "one daily session" : amount + " daily sessions";
+  }
+
   function drawCurves(payload, cadence, lag) {
     const node = document.getElementById("equity-chart");
     const note = document.getElementById("equity-chart-note");
@@ -66,7 +72,7 @@
       });
     });
     window.Plotly.react(node, traces, {
-      title: "Month-end backtest wealth: " + view.cadence + " lag " + view.lag,
+      title: "Month-end backtest wealth: " + view.cadence + ", " + lagDescription(view.cadence, view.lag),
       paper_bgcolor: "#0b1528",
       plot_bgcolor: "#0b1528",
       font: { color: "#e7eef8" },
@@ -75,11 +81,11 @@
       legend: { orientation: "h" },
       margin: { t: 48 },
     }, plotConfig);
-    node.setAttribute("aria-label", "Month-end wealth curves for the selected " + view.cadence + " lag " + view.lag + " backtest");
+    node.setAttribute("aria-label", "Month-end wealth curves for the selected " + view.cadence + " backtest with " + lagDescription(view.cadence, view.lag));
     if (note) {
-      note.textContent = "Historical out-of-sample backtest wealth, rebased to 1. " + view.cadence + " cadence, lag " + view.lag + ", " + view.horizon + "-" + (view.cadence === "monthly" ? "month" : "session") + " horizon. This is not a forecast.";
+      note.textContent = "Historical out-of-sample backtest wealth, rebased to 1. " + view.cadence + " cadence with " + lagDescription(view.cadence, view.lag) + "; " + view.horizon + "-" + (view.cadence === "monthly" ? "month" : "session") + " horizon. This is not a forecast.";
     }
-    if (caption) caption.textContent = "Month-end backtest wealth: " + view.cadence + " lag " + view.lag;
+    if (caption) caption.textContent = "Month-end backtest wealth: " + view.cadence + ", " + lagDescription(view.cadence, view.lag);
     if (body) {
       body.replaceChildren();
       tableRows.forEach((row) => {

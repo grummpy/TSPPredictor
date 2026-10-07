@@ -80,7 +80,11 @@ def test_25_build_outputs_and_no_remote_assets(built):
     assert "monthly-history.json" in script
     assert "payload.views" in script
     assert "drawCurves(curvesPayload, cadence, lag)" in script
+    assert "one monthly row" in script
+    assert "one daily session" in script
     assert 'id="monthly-history-start"' in html
+    assert "Monthly lag 1 row" in html
+    assert "Monthly lag 2 rows" in html
 
 
 def test_26_serve_binds_loopback_only(built):

@@ -50,6 +50,27 @@ def test_history_compounds_returns_and_does_not_bridge_missing_values():
     assert s["compounded_return_pct"] == pytest.approx(9.2624)
 
 
+def test_history_keeps_an_entirely_absent_csv_month_in_the_calendar_window():
+    monthly = pd.DataFrame(
+        {
+            # 2025-12 would be included by tail(4); 2026-02 is absent entirely.
+            "month": ["2025-12", "2026-01", "2026-03", "2026-04", "2026-05"],
+            "G Fund": [0.5, 1.0, 3.0, 4.0, 99.0],
+            "S Fund": [-1.0, 0.1, 0.3, 0.4, 9.0],
+        }
+    )
+
+    payload = build_monthly_history(monthly, "2026-05-12", months=4, funds=FUNDS)
+
+    assert payload["months"] == ["2026-01", "2026-02", "2026-03", "2026-04"]
+    assert payload["window_start"] == "2026-01"
+    assert payload["window_end"] == "2026-04"
+    assert payload["monthly_returns_through"] == "2026-04"
+    assert payload["funds"]["G"]["return_pct"] == [1.0, None, 3.0, 4.0]
+    assert payload["funds"]["G"]["missing_after_start"] == ["2026-02"]
+    assert payload["funds"]["G"]["cumulative_wealth"] == pytest.approx([1.01, None, None, None], nan_ok=True)
+
+
 def test_compounding_preserves_leading_missing_values_and_rejects_invalid_window():
     assert compound_monthly_returns([None, 1.0, 2.0]) == pytest.approx([None, 1.01, 1.0302], nan_ok=True)
     monthly = pd.DataFrame({"month": ["2026-01"], "G Fund": [1.0], "S Fund": [1.0]})

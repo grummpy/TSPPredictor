@@ -115,14 +115,14 @@
 
       <section id="scoreboard" class="page">
         <h1>Scoreboard</h1>
-        <p>Walk-forward, out of sample, with the two-transfer limit and the execution lag. Verdicts are Beat, Inconclusive, or Underperformed. A negative point estimate is stated even when the interval includes zero.</p>
+        <p>Walk-forward, out of sample, with the two-transfer limit and the execution lag. Daily selectors state lag in daily sessions; monthly selectors state lag in monthly rows. The monthly labels do not reinterpret the after-noon, two-session rule described in Data and methods. Verdicts are Beat, Inconclusive, or Underperformed. A negative point estimate is stated even when the interval includes zero.</p>
         <p>{{ meta.n_trials }} configurations were logged. That count is the trial count in the deflated Sharpe ratio. Trying many variants makes a lucky winner look better than it is.</p>
         <p class="warn">These are experimental historical backtests, not reliable forecasts or recommendations. The official fund-return history in History lab is separate from these model results.</p>
         <div class="filters" role="group" aria-label="Cadence and lag">
-          <button type="button" data-cadence="daily" data-lag="1" aria-pressed="true">Daily lag 1</button>
-          <button type="button" data-cadence="daily" data-lag="2" aria-pressed="false">Daily lag 2</button>
-          <button type="button" data-cadence="monthly" data-lag="1" aria-pressed="false">Monthly lag 1</button>
-          <button type="button" data-cadence="monthly" data-lag="2" aria-pressed="false">Monthly lag 2</button>
+          <button type="button" data-cadence="daily" data-lag="1" aria-pressed="true">Daily lag 1 session</button>
+          <button type="button" data-cadence="daily" data-lag="2" aria-pressed="false">Daily lag 2 sessions</button>
+          <button type="button" data-cadence="monthly" data-lag="1" aria-pressed="false">Monthly lag 1 row</button>
+          <button type="button" data-cadence="monthly" data-lag="2" aria-pressed="false">Monthly lag 2 rows</button>
         </div>
         <div class="chart-tools">
           <button type="button" data-toggle-table="equity-table">Show table</button>
