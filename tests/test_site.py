@@ -5,6 +5,8 @@ import re
 import threading
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from tsppredictor.cli import BIND_HOST, make_server
@@ -85,6 +87,28 @@ def test_25_build_outputs_and_no_remote_assets(built):
     assert 'id="monthly-history-start"' in html
     assert "Monthly lag 1 row" in html
     assert "Monthly lag 2 rows" in html
+
+
+def test_monthly_scoreboard_uses_monthly_annualization(built, snap):
+    from tsppredictor.build import _compound_monthly_column
+    from tsppredictor.features.monthly import monthly_price_index
+
+    prices = monthly_price_index(snap.monthly)
+    l2050 = _compound_monthly_column(snap.monthly, "L 2050", prices.index)
+    rows = json.loads((Path(built["dist"]) / "data" / "scoreboard.json").read_text())["rows"]
+    checked = 0
+    for row in rows:
+        if row["cadence"] != "monthly" or row["id"] not in ("bh_c", "l2050"):
+            continue
+        series = prices["C"] if row["id"] == "bh_c" else l2050
+        values = series.loc[pd.Timestamp(row["oos_start"]) : pd.Timestamp(row["oos_end"])].to_numpy()
+        returns = values[1:] / values[:-1] - 1.0
+        expected_vol = np.std(returns, ddof=1) * np.sqrt(12)
+        expected_worst = np.min(values[12:] / values[:-12] - 1.0)
+        assert row["metrics"]["vol"] == round(float(expected_vol), 6)
+        assert row["metrics"]["worst_12m"] == round(float(expected_worst), 6)
+        checked += 1
+    assert checked == 4
 
 
 def test_26_serve_binds_loopback_only(built):

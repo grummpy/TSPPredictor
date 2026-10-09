@@ -26,6 +26,25 @@ L_MAP = {
     "L 2075": "L2075",
 }
 
+# These are the files the offline application actually opens.  The manifest
+# also records Tier B/C reference material, which may deliberately be absent
+# from a small, distributable snapshot.
+REQUIRED_SNAPSHOT_FILES = frozenset(
+    {
+        "MANIFEST.csv",
+        "tsp_daily_share_prices.csv",
+        "tsp_monthly_returns_pct.csv",
+        "tsp_annual_returns_pct.csv",
+        "tsp_retired_lfunds_monthly_returns_pct.csv",
+        "events.csv",
+        "macro/primary/fed_h15_treasury_cmt_and_effr_daily.csv",
+        "macro/primary/bls_cpi_unemployment_monthly.csv",
+        "macro/gpr_daily_caldara_iacoviello.csv",
+        "macro/gpr_monthly_caldara_iacoviello.csv",
+        "macro/nber_business_cycle_dates.csv",
+    }
+)
+
 
 def sha256_16(path: Path) -> str:
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -63,9 +82,20 @@ def _read_csv(path: Path) -> pd.DataFrame:
 
 
 def verify_manifest(root: Path | None = None) -> dict:
-    """Hash every file that is present. Missing Tier B/C paths are expected."""
+    """Hash supplied files and distinguish required data from optional Tier B/C."""
     root = root or snapshot_dir()
-    manifest = pd.read_csv(root / "MANIFEST.csv")
+    manifest_path = root / "MANIFEST.csv"
+    if not manifest_path.exists():
+        required_missing = sorted(path for path in REQUIRED_SNAPSHOT_FILES if not (root / path).exists())
+        return {
+            "present": [],
+            "missing": ["MANIFEST.csv"],
+            "mismatched": [],
+            "required_missing": required_missing,
+            "optional_missing": [],
+            "ok": False,
+        }
+    manifest = pd.read_csv(manifest_path)
     present = []
     missing = []
     mismatched = []
@@ -79,19 +109,29 @@ def verify_manifest(root: Path | None = None) -> dict:
             mismatched.append({"path": row.path, "expected": row.sha256_16, "actual": digest})
         else:
             present.append(row.path)
+    # Do not let an incomplete or malformed manifest hide an application input:
+    # required paths are validated against the snapshot root, not only against
+    # rows the manifest happened to include.
+    required_missing = sorted(path for path in REQUIRED_SNAPSHOT_FILES if not (root / path).exists())
+    optional_missing = [path for path in missing if path not in REQUIRED_SNAPSHOT_FILES]
     return {
         "present": present,
         "missing": missing,
         "mismatched": mismatched,
-        "ok": len(mismatched) == 0,
+        "required_missing": required_missing,
+        "optional_missing": optional_missing,
+        "ok": not mismatched and not required_missing,
     }
 
 
 def load_snapshot(root: Path | None = None) -> Snapshot:
     root = root or snapshot_dir()
     hashes = verify_manifest(root)
-    if hashes["mismatched"]:
-        raise ValueError(f"Snapshot hash mismatch: {hashes['mismatched']}")
+    if hashes["mismatched"] or hashes["required_missing"]:
+        raise ValueError(
+            "Snapshot validation failed: "
+            f"mismatched={hashes['mismatched']}, required_missing={hashes['required_missing']}"
+        )
 
     daily = _read_csv(root / "tsp_daily_share_prices.csv")
     daily["Date"] = pd.to_datetime(daily["Date"])
@@ -172,7 +212,7 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
     report.stats["n_monthly"] = int(len(monthly))
     report.stats["monthly_first"] = str(monthly["month"].iloc[0])
     report.stats["monthly_last"] = str(monthly["month"].iloc[-1])
-    # Reconciliation, 2003-07 through 2026-09 when those months exist.
+    # Reconcile overlapping months from 2003-07 onward.
     max_abs = {}
     n_cmp = 0
     worst = 0.0
@@ -181,6 +221,9 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
     for fund in core:
         calc = month_end_return_pct(daily, fund)
         joined = pd.DataFrame({"calc": calc, "off": pd.to_numeric(official_df[long_name[fund]], errors="coerce")})
+        # Official monthly returns are bundled only through September 2026.
+        # Daily data can extend later, but it must not be compared to an
+        # unbundled (or synthetic future) monthly observation.
         joined = joined.loc[(joined.index >= "2003-07") & (joined.index <= "2026-09")].dropna()
         n_cmp = int(len(joined))
         diff = (joined["calc"] - joined["off"]).abs()
@@ -233,4 +276,3 @@ def check_integrity(snap: Snapshot, as_of_today: pd.Timestamp | None = None) -> 
 
 def core_prices(snap: Snapshot) -> pd.DataFrame:
     return snap.daily[["G", "F", "C", "S", "I"]].copy()
-

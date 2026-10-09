@@ -101,7 +101,7 @@ def verdict(excess_cagr: float, ci90: list[float], dsr: float | None) -> str:
     is not distinguishable from noise.
     """
     low, high = ci90
-    if excess_cagr > 0 and low > 0 and (dsr is None or dsr >= 0.95):
+    if excess_cagr > 0 and low > 0 and dsr is not None and dsr >= 0.95:
         return "Beat"
     if excess_cagr < 0 and high < 0:
         return "Underperformed"

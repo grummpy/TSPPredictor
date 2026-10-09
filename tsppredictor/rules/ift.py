@@ -47,7 +47,11 @@ def as_weights(target: str | np.ndarray | dict) -> np.ndarray:
         weights = np.asarray(target, dtype=float).reshape(-1)
         if weights.size != len(FUNDS):
             raise ValueError("weights must have length 5 (G, F, C, S, I)")
+    if not np.isfinite(weights).all() or np.any(weights < 0):
+        raise ValueError("weights must be finite and non-negative")
     total = float(weights.sum())
+    if not np.isfinite(total):
+        raise ValueError("weights must sum to a finite number")
     if total <= 0:
         raise ValueError("weights must sum to a positive number")
     if abs(total - 1.0) > 1e-6:

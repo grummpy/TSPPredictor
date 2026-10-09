@@ -3,9 +3,42 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
-from tsppredictor.rules.ift import TransferBook
+import numpy as np
+import pytest
+
+from tsppredictor.calendar import project_tsp_days, projected_holidays
+from tsppredictor.rules.ift import TransferBook, as_weights
 
 ET = ZoneInfo("America/New_York")
+
+
+@pytest.mark.parametrize("bad", [-0.1, np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("as_dict", [False, True])
+def test_invalid_allocation_components_are_rejected(bad, as_dict):
+    target = {"G": 1.0, "C": bad} if as_dict else [1.0, 0.0, bad, 0.0, 0.0]
+    with pytest.raises(ValueError, match="finite and non-negative"):
+        as_weights(target)
+
+
+def test_valid_allocation_weights_are_normalized():
+    expected = [0.5, 0.0, 0.5, 0.0, 0.0]
+    assert np.allclose(as_weights({"G": 50, "C": 50}), expected)
+    assert np.allclose(as_weights([50, 0, 50, 0, 0]), expected)
+
+
+def test_projected_new_year_observation_crosses_year_boundary():
+    assert date(2027, 12, 31) in projected_holidays(2027)
+    assert project_tsp_days(date(2027, 12, 30), date(2028, 1, 3)) == [
+        date(2027, 12, 30),
+        date(2028, 1, 3),
+    ]
+
+
+def test_projected_new_year_sunday_observation():
+    assert project_tsp_days(date(2022, 12, 30), date(2023, 1, 3)) == [
+        date(2022, 12, 30),
+        date(2023, 1, 3),
+    ]
 
 
 def et(year, month, day, hour, minute=0, second=0) -> datetime:

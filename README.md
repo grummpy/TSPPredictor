@@ -121,7 +121,10 @@ Nothing is transmitted. There is no account, no telemetry, and no API key in the
 
 ## Adding headlines or events
 
-Headlines, optional and off unless the file exists:
+Headlines are optional and currently API-only. Pass a DataFrame with `date` and
+`headline` columns to `tsppredictor.features.pipeline.build_features(..., headlines=frame)`.
+For example, load this CSV manually with `pandas.read_csv`; `tsp build` does not
+automatically read `data/user/headlines.csv`:
 
 ```text
 data/user/headlines.csv

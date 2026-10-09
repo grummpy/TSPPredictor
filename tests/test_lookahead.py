@@ -4,6 +4,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from tsppredictor.backtest.walkforward import label_price_end, last_train_index, one_hot, simulate_targets
 from tsppredictor.features.lags import cpi_available_date, shift_nyfed_dates
@@ -98,6 +99,24 @@ def test_16_execution_lag():
     assert np.argmax(lag2["weights"][5]) == 2
 
 
+def test_queued_transfer_earns_only_after_its_posting_session():
+    dates = pd.bdate_range("2024-01-02", periods=5)
+    targets = np.vstack([one_hot("C")] + [np.full(5, np.nan)] * 4)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    # It posts at index 2 after that session's return, so C is first held for
+    # the index-3 return rather than receiving an earlier return.
+    assert sim["post_dates"] == [dates[2]]
+    assert np.argmax(sim["weights"][2]) == 0
+    assert np.argmax(sim["weights"][3]) == 2
+
+
+@pytest.mark.parametrize("bad", [[-0.1, 0.0, 1.1, 0.0, 0.0], [0, 0, 0, 0, 0], [np.inf, 0, 0, 0, 0]])
+def test_simulator_rejects_invalid_target_weights(bad):
+    dates = pd.bdate_range("2024-01-02", periods=3)
+    with pytest.raises(ValueError, match="target weights"):
+        simulate_targets(dates, np.asarray([bad] * len(dates)), lag=1)
+
+
 def test_17_purge_and_embargo():
     for test_start in (400, 800, 1200):
         for h in (21, 63, 1):
@@ -105,3 +124,34 @@ def test_17_purge_and_embargo():
                 last = last_train_index(test_start, h, lag)
                 assert label_price_end(last, h, lag) < test_start
                 assert test_start - last > (h + lag)
+
+
+def test_lagged_reversal_accounts_for_pending_transfer():
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    targets = np.vstack([one_hot("C")] + [one_hot("G")] * 5)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    assert sim["post_dates"] == [dates[2], dates[3]]
+    assert sim["month_used"] == {"2024-01": 2}
+    assert np.argmax(sim["weights"][3]) == 2
+    assert np.argmax(sim["weights"][4]) == 0
+
+
+def test_repeated_pending_target_does_not_consume_transfers():
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    targets = np.vstack([one_hot("C")] * 6)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    assert sim["post_dates"] == [dates[2]]
+    assert sim["month_used"] == {"2024-01": 1}
+
+
+def test_g_only_limit_uses_pending_allocation():
+    dates = pd.bdate_range("2024-01-02", periods=7)
+    initial = np.array([0.0, 0.0, 0.5, 0.5, 0.0])
+    targets = np.full((7, 5), np.nan)
+    targets[0] = one_hot("C")
+    targets[1] = one_hot("S")
+    targets[2] = [0.5, 0.0, 0.0, 0.5, 0.0]
+    sim = simulate_targets(dates, targets, lag=2, initial=initial)
+    assert sim["post_dates"] == [dates[2], dates[3], dates[4]]
+    assert sim["month_used"] == {"2024-01": 2}
+    assert np.allclose(sim["weights"][5], targets[2])
