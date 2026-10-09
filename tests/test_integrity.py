@@ -56,6 +56,13 @@ def test_manifest_cannot_hide_a_required_file_by_omitting_its_row(tmp_path):
     assert report["ok"] is False
 
 
+def test_missing_manifest_is_a_validation_failure_not_a_raw_file_error(tmp_path):
+    report = verify_manifest(tmp_path)
+    assert "MANIFEST.csv" in report["required_missing"]
+    with pytest.raises(ValueError, match="required_missing"):
+        load_snapshot(tmp_path)
+
+
 def _pct(prices, fund, start, end):
     return float(prices.loc[end, fund] / prices.loc[start, fund] - 1.0) * 100.0
 

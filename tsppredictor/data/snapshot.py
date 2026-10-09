@@ -84,7 +84,18 @@ def _read_csv(path: Path) -> pd.DataFrame:
 def verify_manifest(root: Path | None = None) -> dict:
     """Hash supplied files and distinguish required data from optional Tier B/C."""
     root = root or snapshot_dir()
-    manifest = pd.read_csv(root / "MANIFEST.csv")
+    manifest_path = root / "MANIFEST.csv"
+    if not manifest_path.exists():
+        required_missing = sorted(path for path in REQUIRED_SNAPSHOT_FILES if not (root / path).exists())
+        return {
+            "present": [],
+            "missing": ["MANIFEST.csv"],
+            "mismatched": [],
+            "required_missing": required_missing,
+            "optional_missing": [],
+            "ok": False,
+        }
+    manifest = pd.read_csv(manifest_path)
     present = []
     missing = []
     mismatched = []
