@@ -98,7 +98,10 @@ def verify_manifest(root: Path | None = None) -> dict:
             mismatched.append({"path": row.path, "expected": row.sha256_16, "actual": digest})
         else:
             present.append(row.path)
-    required_missing = [path for path in missing if path in REQUIRED_SNAPSHOT_FILES]
+    # Do not let an incomplete or malformed manifest hide an application input:
+    # required paths are validated against the snapshot root, not only against
+    # rows the manifest happened to include.
+    required_missing = sorted(path for path in REQUIRED_SNAPSHOT_FILES if not (root / path).exists())
     optional_missing = [path for path in missing if path not in REQUIRED_SNAPSHOT_FILES]
     return {
         "present": present,

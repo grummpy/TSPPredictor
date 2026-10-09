@@ -27,7 +27,7 @@ def test_reconciliation_stops_at_bundled_september_2026(snap, gap):
         assert any("C daily-to-monthly gap" in error for error in report.errors)
 
 
-def test_manifest_rejects_missing_required_file_but_allows_optional_tier_data(tmp_path, snap):
+def test_manifest_rejects_missing_required_file_but_allows_optional_tier_data(tmp_path):
     root = tmp_path / "snapshot"
     root.mkdir()
     # A minimal synthetic manifest exercises classification without external data.
@@ -37,11 +37,23 @@ def test_manifest_rejects_missing_required_file_but_allows_optional_tier_data(tm
         "macro/ff3_factors_daily.csv,0,0,,,0000000000000000\n"
     )
     report = verify_manifest(root)
-    assert report["required_missing"] == ["tsp_daily_share_prices.csv"]
+    assert "tsp_daily_share_prices.csv" in report["required_missing"]
     assert report["optional_missing"] == ["macro/ff3_factors_daily.csv"]
     assert report["ok"] is False
     with pytest.raises(ValueError, match="required_missing"):
         load_snapshot(root)
+
+
+def test_manifest_cannot_hide_a_required_file_by_omitting_its_row(tmp_path):
+    root = tmp_path / "snapshot"
+    root.mkdir()
+    (root / "MANIFEST.csv").write_text(
+        "path,rows,cols,first_key,last_key,sha256_16\n"
+        "macro/ff3_factors_daily.csv,0,0,,,0000000000000000\n"
+    )
+    report = verify_manifest(root)
+    assert "tsp_daily_share_prices.csv" in report["required_missing"]
+    assert report["ok"] is False
 
 
 def _pct(prices, fund, start, end):
