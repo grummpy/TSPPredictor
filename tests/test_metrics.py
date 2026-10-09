@@ -6,7 +6,7 @@ import pytest
 
 from tsppredictor.backtest.honesty import verdict
 from tsppredictor.backtest.metrics import cagr, max_drawdown, one_way_turnover, summarize
-from tsppredictor.backtest.walkforward import constant_fund_path, one_hot, simulate_targets
+from tsppredictor.backtest.walkforward import constant_fund_path, one_hot, simulate_targets, static_mix_wealth
 
 
 @pytest.mark.parametrize("dsr", [None, 0.94, np.nan])
@@ -37,6 +37,20 @@ def test_summary_uses_requested_annualization(periods):
         else wealth[-1] / wealth[0] - 1.0
     )
     assert stats["worst_12m"] == pytest.approx(expected_worst)
+
+
+def test_monthly_annualization_matches_a_hand_calculated_12_period_fixture():
+    dates = pd.date_range("2020-01-31", periods=13, freq="ME")
+    monthly = np.array([0.01, 0.02] * 6)
+    rets = np.r_[0.0, monthly]
+    wealth = np.cumprod(1.0 + rets)
+    stats = summarize(wealth, dates, np.vstack([one_hot("C")] * 13), np.zeros(13), periods=12)
+    monthly_sd = np.std(monthly, ddof=1)
+    assert stats["vol"] == pytest.approx(monthly_sd * np.sqrt(12))
+    # Hand calculation: mean 1.5% divided by the sample standard deviation,
+    # then scaled by sqrt(12) rather than daily sqrt(252).
+    assert stats["sharpe_vs_g"] == pytest.approx(monthly.mean() / monthly_sd * np.sqrt(12))
+    assert stats["worst_12m"] == pytest.approx(wealth[-1] / wealth[0] - 1.0)
 
 
 def test_build_metrics_pass_monthly_periods():
@@ -82,6 +96,19 @@ def test_19_buy_and_hold_c_matches_the_price_path(prices):
     rets[1:] = px[1:] / px[:-1] - 1.0
     wealth = np.cumprod(1.0 + rets)
     assert np.isclose(cagr(wealth, prices.index), expected)
+
+
+def test_fixed_weight_baseline_does_not_implicitly_rebalance_daily():
+    dates = pd.date_range("2024-01-02", periods=3, freq="B")
+    prices = pd.DataFrame(
+        {"G": [100, 100, 100], "F": [100, 100, 100], "C": [100, 120, 144], "S": [100, 100, 100], "I": [100, 100, 100]},
+        index=dates,
+        dtype=float,
+    )
+    wealth, weights = static_mix_wealth(prices, np.array([0.5, 0, 0.5, 0, 0]))
+    assert wealth[-1] == pytest.approx(1.22)
+    assert weights[1, 2] == pytest.approx(120 / 220)
+    assert weights[2, 2] == pytest.approx(144 / 244)
 
 
 def test_20_always_g_has_no_drawdown_and_no_transfers(prices):

@@ -4,6 +4,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from tsppredictor.backtest.walkforward import label_price_end, last_train_index, one_hot, simulate_targets
 from tsppredictor.features.lags import cpi_available_date, shift_nyfed_dates
@@ -96,6 +97,24 @@ def test_16_execution_lag():
     assert np.argmax(lag1["weights"][4]) == 2
     assert np.argmax(lag2["weights"][4]) == 0
     assert np.argmax(lag2["weights"][5]) == 2
+
+
+def test_queued_transfer_earns_only_after_its_posting_session():
+    dates = pd.bdate_range("2024-01-02", periods=5)
+    targets = np.vstack([one_hot("C")] + [np.full(5, np.nan)] * 4)
+    sim = simulate_targets(dates, targets, lag=2, initial=one_hot("G"))
+    # It posts at index 2 after that session's return, so C is first held for
+    # the index-3 return rather than receiving an earlier return.
+    assert sim["post_dates"] == [dates[2]]
+    assert np.argmax(sim["weights"][2]) == 0
+    assert np.argmax(sim["weights"][3]) == 2
+
+
+@pytest.mark.parametrize("bad", [[-0.1, 0.0, 1.1, 0.0, 0.0], [0, 0, 0, 0, 0], [np.inf, 0, 0, 0, 0]])
+def test_simulator_rejects_invalid_target_weights(bad):
+    dates = pd.bdate_range("2024-01-02", periods=3)
+    with pytest.raises(ValueError, match="target weights"):
+        simulate_targets(dates, np.asarray([bad] * len(dates)), lag=1)
 
 
 def test_17_purge_and_embargo():

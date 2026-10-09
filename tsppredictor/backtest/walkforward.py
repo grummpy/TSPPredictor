@@ -24,6 +24,21 @@ def one_hot(fund: str) -> np.ndarray:
     return weights
 
 
+def _validated_target(target: np.ndarray) -> np.ndarray | None:
+    """Return a valid target allocation, retaining all-NaN as no request."""
+    target = np.asarray(target, dtype=float)
+    if np.isnan(target).all():
+        return None
+    if target.shape != (len(FUNDS),):
+        raise ValueError("target weights must have one weight for each fund")
+    if not np.isfinite(target).all() or np.any(target < 0):
+        raise ValueError("target weights must be finite and non-negative")
+    total = float(target.sum())
+    if total <= 0:
+        raise ValueError("target weights must sum to a positive number")
+    return target / total
+
+
 def last_train_index(test_start: int, h: int, lag: int) -> int:
     """Last decision index allowed in the training fold.
 
@@ -100,11 +115,9 @@ def simulate_targets(
     day_keys = [pd.Timestamp(ts).date() for ts in dates]
 
     for t in range(n):
-        desired = targets[t]
-        if not np.isfinite(desired).all():
+        desired = _validated_target(targets[t])
+        if desired is None:
             continue
-        if abs(desired.sum() - 1.0) > 1e-6 and desired.sum() > 0:
-            desired = desired / desired.sum()
         if np.allclose(desired, effective, atol=1e-6):
             continue
         to_g = desired[0] >= 0.999 and np.allclose(desired[1:], 0.0, atol=1e-8)

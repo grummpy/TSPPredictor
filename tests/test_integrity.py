@@ -5,25 +5,43 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from tsppredictor.data.snapshot import check_integrity
+from tsppredictor.data.snapshot import check_integrity, load_snapshot, verify_manifest
 
 
 @pytest.mark.parametrize("gap", [0.0, 0.02])
-def test_reconciliation_validates_future_complete_month(snap, gap):
-    dates = pd.to_datetime(["2026-09-30", "2026-10-30", "2026-11-02"])
+def test_reconciliation_stops_at_bundled_september_2026(snap, gap):
+    dates = pd.to_datetime(["2026-08-31", "2026-09-30", "2026-10-30", "2026-11-02"])
     daily = pd.DataFrame(
-        {fund: [100.0, 101.0, 102.0] for fund in ("G", "F", "C", "S", "I")}, index=dates
+        {fund: [100.0, 101.0, 102.0, 103.0] for fund in ("G", "F", "C", "S", "I")}, index=dates
     )
     monthly = pd.DataFrame(
-        {"month": ["2026-10"], **{f"{fund} Fund": [1.0] for fund in ("G", "F", "C", "S", "I")}}
+        {"month": ["2026-09", "2026-10"], **{f"{fund} Fund": [1.0, 1.0] for fund in ("G", "F", "C", "S", "I")}}
     )
     monthly.loc[0, "C Fund"] += gap
+    monthly.loc[1, "S Fund"] += 50.0  # Future monthly data is outside the snapshot cutoff.
     refreshed = replace(snap, daily=daily, monthly=monthly)
     report = check_integrity(refreshed, as_of_today=dates[-1])
     assert report.stats["recon_months"] == 1
     assert report.ok == (gap == 0.0)
     if gap:
         assert any("C daily-to-monthly gap" in error for error in report.errors)
+
+
+def test_manifest_rejects_missing_required_file_but_allows_optional_tier_data(tmp_path, snap):
+    root = tmp_path / "snapshot"
+    root.mkdir()
+    # A minimal synthetic manifest exercises classification without external data.
+    (root / "MANIFEST.csv").write_text(
+        "path,rows,cols,first_key,last_key,sha256_16\n"
+        "tsp_daily_share_prices.csv,0,0,,,0000000000000000\n"
+        "macro/ff3_factors_daily.csv,0,0,,,0000000000000000\n"
+    )
+    report = verify_manifest(root)
+    assert report["required_missing"] == ["tsp_daily_share_prices.csv"]
+    assert report["optional_missing"] == ["macro/ff3_factors_daily.csv"]
+    assert report["ok"] is False
+    with pytest.raises(ValueError, match="required_missing"):
+        load_snapshot(root)
 
 
 def _pct(prices, fund, start, end):
