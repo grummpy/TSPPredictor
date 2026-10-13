@@ -40,6 +40,9 @@ def test_25_build_outputs_and_no_remote_assets(built):
         payload = json.loads((dist / "data" / name).read_text())
         assert payload["schema_version"] == 1
         assert payload["data_as_of"]
+    meta = json.loads((dist / "data" / "meta.json").read_text())
+    assert meta["macro_vintage"]["first_print_vintages_available"] is False
+    assert meta["execution_lag_sensitivity"]["comparisons"]
     script = (dist / "app.js").read_text()
     style = (dist / "app.css").read_text()
     html_wo = re.sub(r'<a class="citation"[^>]*>.*?</a>', "", html, flags=re.S)
@@ -90,6 +93,9 @@ def test_25_build_outputs_and_no_remote_assets(built):
     assert 'id="monthly-history-start"' in html
     assert "Monthly lag 1 row" in html
     assert "Monthly lag 2 rows" in html
+    assert "tsp_decision_journal" in script
+    assert "Preview:" in script
+    assert "tsp-journal-last-import-backup" in script
 
 
 def test_build_manifest_records_local_provenance(built):

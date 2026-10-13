@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tsppredictor.backtest.walkforward import label_price_end, last_train_index, one_hot, simulate_targets
+from tsppredictor.backtest.walkforward import (
+    label_price_end,
+    last_train_index,
+    one_hot,
+    portfolio_returns,
+    simulate_targets,
+)
 from tsppredictor.features.lags import cpi_available_date, shift_nyfed_dates
 from tsppredictor.features.pipeline import build_features, nber_evaluation_flag
 from tsppredictor.features.spec import model_feature_names
@@ -155,3 +161,43 @@ def test_g_only_limit_uses_pending_allocation():
     assert sim["post_dates"] == [dates[2], dates[3], dates[4]]
     assert sim["month_used"] == {"2024-01": 2}
     assert np.allclose(sim["weights"][5], targets[2])
+
+
+def test_mixed_allocation_matches_hand_calculated_fixed_holdings_ledger():
+    """A mixed IFT target holds shares between posts instead of daily-rebalancing."""
+    dates = pd.bdate_range("2024-01-02", periods=4)
+    prices = pd.DataFrame(
+        {
+            "G": [100, 100, 100, 100],
+            "F": [100, 100, 100, 100],
+            "C": [100, 110, 121, 133.1],
+            "S": [100, 100, 100, 100],
+            "I": [100, 100, 100, 100],
+        },
+        index=dates,
+        dtype=float,
+    )
+    targets = np.full((len(dates), 5), np.nan)
+    initial = np.array([0.5, 0.0, 0.5, 0.0, 0.0])
+    simulated = simulate_targets(dates, targets, lag=1, initial=initial, prices=prices)
+
+    # Hand ledger: $0.50 in each G and C share at 100 gives values
+    # 1.00, 1.05, 1.105, and 1.1605 as C rises 10% per session.
+    wealth = np.cumprod(1.0 + portfolio_returns(prices, simulated["weights"]))
+    assert wealth == pytest.approx([1.0, 1.05, 1.105, 1.1605])
+    assert simulated["weights"][2, 2] == pytest.approx(0.55 / 1.05)
+    assert simulated["n_transfers"] == 0
+
+
+@pytest.mark.parametrize("lag", [1, 2])
+def test_mixed_target_keeps_queued_posting_dates_and_pure_fund_behavior(lag):
+    dates = pd.bdate_range("2024-01-02", periods=6)
+    prices = pd.DataFrame({fund: np.full(len(dates), 100.0) for fund in ("G", "F", "C", "S", "I")}, index=dates)
+    targets = np.full((len(dates), 5), np.nan)
+    targets[0] = np.array([0.25, 0.0, 0.75, 0.0, 0.0])
+    simulated = simulate_targets(dates, targets, lag=lag, initial=one_hot("G"), prices=prices)
+    assert simulated["post_dates"] == [dates[lag]]
+    # The post is after the listed session's return; the new mix earns from the
+    # following session, exactly as the existing pure-fund queue does.
+    assert np.allclose(simulated["weights"][lag], one_hot("G"))
+    assert np.allclose(simulated["weights"][lag + 1], targets[0])

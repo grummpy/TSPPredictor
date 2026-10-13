@@ -42,6 +42,7 @@ from tsppredictor.backtest.walkforward import (
 from tsppredictor.calendar import project_tsp_days
 from tsppredictor.data.ingest_macro import load_cached_nyfed, load_cached_vix
 from tsppredictor.data.snapshot import check_integrity, core_prices, load_snapshot
+from tsppredictor.evidence import lag_sensitivity, macro_vintage_metadata
 from tsppredictor.features.monthly import build_monthly_features, monthly_price_index
 from tsppredictor.features.pipeline import build_features
 from tsppredictor.features.spec import FEATURES, feature_dicts, model_feature_names
@@ -160,7 +161,15 @@ def _simulate(dates, prices, targets, lag: int, min_hold: int, oos_i: int) -> di
     initial = matrix[oos_i].copy()
     if not np.isfinite(initial).all():
         initial = one_hot("G")
-    sim = simulate_targets(dates, matrix, lag=lag, min_hold=min_hold, enforce_ift=True, initial=initial)
+    sim = simulate_targets(
+        dates,
+        matrix,
+        lag=lag,
+        min_hold=min_hold,
+        enforce_ift=True,
+        initial=initial,
+        prices=prices,
+    )
     returns = portfolio_returns(prices, sim["weights"])
     wealth = np.cumprod(1.0 + returns)
     sim["returns"] = returns
@@ -942,6 +951,8 @@ def run_build() -> dict:
         "nyfed_in_features": "nyfed_rec_prob" in features.columns,
         "stale_price_toy": stale,
         "i_fund_break": I_FUND_BREAK,
+        "macro_vintage": macro_vintage_metadata(),
+        "execution_lag_sensitivity": lag_sensitivity(scoreboard),
         "elapsed_seconds": round(time.perf_counter() - started, 1),
     }
     # Post-2008 slice note for the primary ensemble, already the daily window.

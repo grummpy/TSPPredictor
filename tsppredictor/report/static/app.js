@@ -449,42 +449,117 @@
   }
 
   const JOURNAL_KEY = "tsp-journal";
+  const JOURNAL_BACKUP_KEY = "tsp-journal-last-import-backup";
+  const JOURNAL_KIND = "tsp_decision_journal";
+  const JOURNAL_SCHEMA_VERSION = 1;
+
+  function browserJournalId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") return "journal-" + window.crypto.randomUUID();
+    return "journal-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function normalizeJournalEntry(row) {
+    if (!row || typeof row !== "object") throw new Error("Journal entry must be an object.");
+    const date = String(row.date || "");
+    const fund = String(row.fund || "").toUpperCase();
+    const confidence = Number(row.confidence);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Journal dates must use YYYY-MM-DD.");
+    if (!["G", "F", "C", "S", "I"].includes(fund)) throw new Error("Journal funds must be G, F, C, S, or I.");
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+      throw new Error("Journal confidence must be from 0 to 1.");
+    }
+    const id = row.id ? String(row.id) : browserJournalId();
+    if (!id || id.length > 160) throw new Error("Journal id is invalid.");
+    return { id, date, fund, reason: String(row.reason || ""), confidence };
+  }
 
   function readJournal() {
-    try { return JSON.parse(localStorage.getItem(JOURNAL_KEY) || "[]"); }
-    catch (err) { return []; }
+    try {
+      const stored = JSON.parse(localStorage.getItem(JOURNAL_KEY) || "[]");
+      const rows = Array.isArray(stored) ? stored : (stored && stored.entries);
+      if (!Array.isArray(rows)) return [];
+      return rows.map(normalizeJournalEntry);
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function writeJournal(rows) {
+    localStorage.setItem(JOURNAL_KEY, JSON.stringify(rows));
+  }
+
+  function journalDocument(rows) {
+    return { schema_version: JOURNAL_SCHEMA_VERSION, kind: JOURNAL_KIND, entries: rows };
+  }
+
+  function canonicalJournalEntry(row) {
+    return JSON.stringify({ date: row.date, fund: row.fund, reason: row.reason, confidence: row.confidence });
+  }
+
+  function previewJournalImport(localRows, incomingRows) {
+    const localById = new Map(localRows.map((row) => [row.id, row]));
+    const incomingIds = new Set();
+    const additions = [];
+    const duplicates = [];
+    const conflicts = [];
+    incomingRows.forEach((row) => {
+      if (incomingIds.has(row.id)) throw new Error("Import contains duplicate journal ids.");
+      incomingIds.add(row.id);
+      const local = localById.get(row.id);
+      if (!local) additions.push(row);
+      else if (canonicalJournalEntry(local) === canonicalJournalEntry(row)) duplicates.push(row.id);
+      else conflicts.push(row.id);
+    });
+    return { additions, duplicates, conflicts };
+  }
+
+  function journalStatus(message) {
+    const node = document.getElementById("j-status");
+    if (node) node.textContent = message;
   }
 
   function paintJournal() {
     const node = document.getElementById("j-list");
     if (!node) return;
     const rows = readJournal();
-    node.textContent = rows.length ? JSON.stringify(rows, null, 2) : "No journal entries in this browser.";
+    node.textContent = rows.length ? JSON.stringify(journalDocument(rows), null, 2) : "No journal entries in this browser.";
   }
 
   const journalForm = document.getElementById("journal-form");
   if (journalForm) {
     journalForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      const rows = readJournal();
-      rows.push({
-        date: document.getElementById("j-date").value,
-        fund: document.getElementById("j-fund").value,
-        reason: document.getElementById("j-reason").value,
-        confidence: Number(document.getElementById("j-conf").value),
-      });
-      localStorage.setItem(JOURNAL_KEY, JSON.stringify(rows));
-      paintJournal();
+      try {
+        const rows = readJournal();
+        rows.push(normalizeJournalEntry({
+          id: browserJournalId(),
+          date: document.getElementById("j-date").value,
+          fund: document.getElementById("j-fund").value,
+          reason: document.getElementById("j-reason").value,
+          confidence: Number(document.getElementById("j-conf").value),
+        }));
+        writeJournal(rows);
+        journalStatus("Saved in this browser. Export it to move it to the command-line journal.");
+        paintJournal();
+      } catch (err) {
+        journalStatus(err.message || "Could not save this journal entry.");
+      }
     });
   }
   const exportButton = document.getElementById("j-export");
   if (exportButton) {
     exportButton.addEventListener("click", () => {
-      const blob = new Blob([JSON.stringify(readJournal(), null, 2)], { type: "application/json" });
+      const rows = readJournal();
+      // Persist ids assigned while migrating an older browser-only journal so
+      // subsequent exports can identify duplicates and conflicts consistently.
+      writeJournal(rows);
+      const blob = new Blob([JSON.stringify(journalDocument(rows), null, 2)], { type: "application/json" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = "tsp-journal.json";
       link.click();
+      URL.revokeObjectURL(link.href);
+      journalStatus("Exported the versioned journal format. No account or transfer request was made.");
     });
   }
   const importInput = document.getElementById("j-import");
@@ -494,9 +569,35 @@
       if (!file) return;
       const reader = new FileReader();
       reader.onload = () => {
-        const parsed = JSON.parse(String(reader.result));
-        localStorage.setItem(JOURNAL_KEY, JSON.stringify(parsed));
-        paintJournal();
+        try {
+          const documentPayload = JSON.parse(String(reader.result));
+          if (!documentPayload || documentPayload.kind !== JOURNAL_KIND || documentPayload.schema_version !== JOURNAL_SCHEMA_VERSION) {
+            throw new Error("Select a versioned TSP journal export.");
+          }
+          if (!Array.isArray(documentPayload.entries)) throw new Error("Journal export entries must be an array.");
+          if (documentPayload.entries.some((row) => !row || typeof row !== "object" || !row.id)) {
+            throw new Error("Journal exports must include stable entry ids.");
+          }
+          const localRows = readJournal();
+          const incomingRows = documentPayload.entries.map(normalizeJournalEntry);
+          const preview = previewJournalImport(localRows, incomingRows);
+          const summary = "Preview: " + preview.additions.length + " new, " + preview.duplicates.length + " duplicate, " + preview.conflicts.length + " conflict.";
+          journalStatus(summary + " Local conflicts will be retained.");
+          if (!preview.additions.length) return;
+          const accepted = window.confirm(summary + " Import only the new entries? Existing entries and conflicts will not be overwritten.");
+          if (!accepted) {
+            journalStatus(summary + " Import cancelled; no browser journal changes were made.");
+            return;
+          }
+          localStorage.setItem(JOURNAL_BACKUP_KEY, JSON.stringify({ at: new Date().toISOString(), entries: localRows }));
+          writeJournal(localRows.concat(preview.additions));
+          journalStatus(summary + " Imported " + preview.additions.length + " new entries and saved a browser-local backup.");
+          paintJournal();
+        } catch (err) {
+          journalStatus(err.message || "Could not read that journal export.");
+        } finally {
+          importInput.value = "";
+        }
       };
       reader.readAsText(file);
     });
