@@ -410,8 +410,9 @@
           </form>
           <button type="button" id="j-export">Export journal</button>
           <label>Import journal <input id="j-import" type="file" accept="application/json"></label>
+          <p id="j-status" class="muted" aria-live="polite"></p>
           <pre id="j-list"></pre>
-          <p class="muted">The same journal can be appended from the command line with tsp journal add, which writes data/user/journal.jsonl on this machine.</p>
+          <p class="muted">Export/import uses the versioned TSP journal format shared with <code>tsp journal export</code>, <code>preview</code>, and <code>import</code>. Browser imports show duplicates and conflicts before merging, retain local conflicts, and save a recoverable browser-local backup before a change. The command-line journal writes only <code>data/user/journal.jsonl</code> on this machine.</p>
         </article>
       </section>
 

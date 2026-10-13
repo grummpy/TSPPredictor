@@ -91,12 +91,17 @@ def simulate_targets(
     min_hold: int = 0,
     enforce_ift: bool = True,
     initial: np.ndarray | None = None,
+    prices: pd.DataFrame | None = None,
 ) -> dict:
     """Turn a target-weight series into the weights that earn each session's return.
 
     ``targets[t]`` is the mix requested after the close of session t. A non-finite
     row means "no new request". The initial mix is an investment election and
-    does not count as a transfer.
+    does not count as a transfer.  When ``prices`` are supplied, an accepted
+    target is an interfund transfer at its posting close: holdings then remain
+    untouched until the next accepted post, so their weights drift with prices.
+    Without prices, the legacy constant-target representation is retained for
+    callers that only need posting/queue semantics.
     """
     dates = pd.DatetimeIndex(dates)
     n = len(dates)
@@ -142,10 +147,33 @@ def simulate_targets(
 
     holding = np.repeat(initial.reshape(1, -1), n, axis=0)
     current = initial.copy()
+    price_matrix = None
+    if prices is not None:
+        if not isinstance(prices, pd.DataFrame):
+            raise ValueError("prices must be a DataFrame when supplied")
+        price_matrix = prices.loc[:, list(FUNDS)].to_numpy(dtype=float)
+        if price_matrix.shape != (n, len(FUNDS)):
+            raise ValueError("prices must align with dates and contain G, F, C, S, and I")
+
     for i in range(n):
         holding[i] = current
+        # A price move changes the value weights for the next session when no
+        # transfer resets them.  This is equivalent to retaining fixed shares.
+        carried = current
+        if price_matrix is not None and i > 0:
+            previous = price_matrix[i - 1]
+            latest = price_matrix[i]
+            with np.errstate(divide="ignore", invalid="ignore"):
+                relatives = latest / previous
+            relatives = np.where(np.isfinite(relatives) & (relatives > 0), relatives, 1.0)
+            values = current * relatives
+            total = float(values.sum())
+            if total > 0 and np.isfinite(total):
+                carried = values / total
         if i in posts:
             current = posts[i]
+        else:
+            current = carried
     return {"weights": holding, "post_dates": post_dates, "n_transfers": len(post_dates), "month_used": month_used}
 
 
