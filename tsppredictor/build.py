@@ -7,8 +7,12 @@ volatility stands in for VIX and the NY Fed series is omitted.
 
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
 import json
 import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -16,7 +20,7 @@ import numpy as np
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from tsppredictor import DATA_AS_OF_BUNDLED, I_FUND_BREAK, NOT_ADVICE, SCHEMA_VERSION
+from tsppredictor import DATA_AS_OF_BUNDLED, I_FUND_BREAK, NOT_ADVICE, SCHEMA_VERSION, __version__
 from tsppredictor.backtest.honesty import (
     block_bootstrap_excess_cagr,
     deflated_sharpe_ratio,
@@ -47,7 +51,7 @@ from tsppredictor.models.ml import explain_snapshot, walk_forward_models
 from tsppredictor.models.regimes import rule_regime_labels, walk_forward_gmm
 from tsppredictor.models.rules import RULES, all_rules
 from tsppredictor.monthly_history import build_monthly_history
-from tsppredictor.paths import cache_dir, dist_dir, snapshot_dir
+from tsppredictor.paths import cache_dir, dist_dir, repo_root, snapshot_dir
 from tsppredictor.studies import (
     cost_of_being_wrong,
     event_window_study,
@@ -79,6 +83,63 @@ def _log(message: str) -> None:
 def _dump(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, separators=(",", ":")))
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 16), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _source_revision() -> str | None:
+    """Return the checked-out revision when this is a source checkout.
+
+    Frozen/offline packages do not need a Git executable to build; their
+    manifest records an unavailable revision rather than pretending to know
+    one.
+    """
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root(),
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    revision = result.stdout.strip()
+    return revision if len(revision) == 40 else None
+
+
+def _build_manifest(*, as_of: str, integrity, optional_sources: dict[str, bool]) -> dict:
+    """Describe reproducibility inputs for one entirely local build."""
+
+    dependencies = {}
+    for package in ("jinja2", "numpy", "pandas", "scikit-learn", "scipy"):
+        try:
+            dependencies[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            dependencies[package] = None
+    snapshot = snapshot_dir()
+    return {
+        "schema_version": 1,
+        "kind": "local_build_provenance",
+        "source": {"revision": _source_revision(), "package_version": __version__},
+        "runtime": {"python": sys.version.split()[0], "dependencies": dependencies},
+        "snapshot": {
+            "manifest_sha256": _sha256(snapshot / "MANIFEST.csv"),
+            "integrity_ok": integrity.ok,
+            "data_as_of": as_of,
+        },
+        "configuration": {"blocks": [dict(spec) for spec in BLOCKS]},
+        "optional_sources": dict(optional_sources),
+        "limits": "Local snapshot and build provenance only; this does not validate future returns or give financial advice.",
+    }
 
 
 def _iso(ts) -> str:
@@ -863,6 +924,7 @@ def run_build() -> dict:
     else:
         refresh = {"at": None, "ok": True, "source": "bundled snapshot", "data_as_of": as_of}
     optional = _optional_present()
+    provenance = _build_manifest(as_of=as_of, integrity=integrity, optional_sources=optional)
     meta = {
         "schema_version": SCHEMA_VERSION,
         "data_as_of": as_of,
@@ -918,6 +980,7 @@ def run_build() -> dict:
     }
     dist = dist_dir()
     data = dist / "data"
+    _dump(data / "build-manifest.json", provenance)
     _dump(data / "meta.json", meta)
     _dump(data / "today.json", today)
     _dump(data / "scoreboard.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of, "rows": scoreboard, "n_trials": n_trials_box[0]})
