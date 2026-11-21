@@ -1,5 +1,6 @@
 """Tests 25–28: build outputs, loopback bind, privacy, optional browser smoke."""
 
+import hashlib
 import json
 import re
 import threading
@@ -10,6 +11,7 @@ import pandas as pd
 import pytest
 
 from tsppredictor.cli import BIND_HOST, make_server
+from tsppredictor.data.snapshot import check_integrity
 
 
 @pytest.fixture(scope="session")
@@ -26,6 +28,7 @@ def test_25_build_outputs_and_no_remote_assets(built):
     assert "not financial advice" in html.lower() or "Not financial advice" in html or "not financial advice" in html
     for name in (
         "meta.json",
+        "build-manifest.json",
         "today.json",
         "scoreboard.json",
         "calibration.json",
@@ -87,6 +90,43 @@ def test_25_build_outputs_and_no_remote_assets(built):
     assert 'id="monthly-history-start"' in html
     assert "Monthly lag 1 row" in html
     assert "Monthly lag 2 rows" in html
+
+
+def test_build_manifest_records_local_provenance(built):
+    dist = Path(built["dist"])
+    manifest = json.loads((dist / "data" / "build-manifest.json").read_text())
+    snapshot_manifest = Path("data/snapshot/MANIFEST.csv")
+    assert manifest["schema_version"] == 1
+    assert manifest["kind"] == "local_build_provenance"
+    assert manifest["source"]["package_version"]
+    assert manifest["snapshot"]["data_as_of"] == built["meta"]["data_as_of"]
+    assert manifest["snapshot"]["integrity_ok"] is True
+    assert manifest["snapshot"]["manifest_sha256"] == hashlib.sha256(snapshot_manifest.read_bytes()).hexdigest()
+    assert manifest["configuration"]["blocks"]
+    assert {"daily", "monthly"} <= {block["cadence"] for block in manifest["configuration"]["blocks"]}
+    assert set(manifest["runtime"]["dependencies"]) == {
+        "jinja2",
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "scipy",
+    }
+    assert "does not validate future returns" in manifest["limits"]
+
+
+def test_provenance_manifest_is_self_describing(snap):
+    from tsppredictor.build import _build_manifest
+
+    integrity = check_integrity(snap, as_of_today=snap.daily.index.max())
+    manifest = _build_manifest(
+        as_of=snap.daily.index.max().strftime("%Y-%m-%d"),
+        integrity=integrity,
+        optional_sources={"vix": False, "nyfed": False},
+    )
+    assert manifest["kind"] == "local_build_provenance"
+    assert manifest["snapshot"]["integrity_ok"] is True
+    assert len(manifest["snapshot"]["manifest_sha256"]) == 64
+    assert manifest["optional_sources"] == {"vix": False, "nyfed": False}
 
 
 def test_monthly_scoreboard_uses_monthly_annualization(built, snap):
