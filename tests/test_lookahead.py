@@ -182,9 +182,9 @@ def test_mixed_allocation_matches_hand_calculated_fixed_holdings_ledger():
     simulated = simulate_targets(dates, targets, lag=1, initial=initial, prices=prices)
 
     # Hand ledger: $0.50 in each G and C share at 100 gives values
-    # 1.00, 1.05, 1.105, and 1.1605 as C rises 10% per session.
+    # 1.00, 1.05, 1.105, and 1.1655 as C rises 10% per session.
     wealth = np.cumprod(1.0 + portfolio_returns(prices, simulated["weights"]))
-    assert wealth == pytest.approx([1.0, 1.05, 1.105, 1.1605])
+    assert wealth == pytest.approx([1.0, 1.05, 1.105, 1.1655])
     assert simulated["weights"][2, 2] == pytest.approx(0.55 / 1.05)
     assert simulated["n_transfers"] == 0
 
