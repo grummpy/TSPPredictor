@@ -129,6 +129,7 @@ def _build_manifest(*, as_of: str, integrity, optional_sources: dict[str, bool])
     snapshot = snapshot_dir()
     return {
         "schema_version": 1,
+        "data_as_of": as_of,
         "kind": "local_build_provenance",
         "source": {"revision": _source_revision(), "package_version": __version__},
         "runtime": {"python": sys.version.split()[0], "dependencies": dependencies},
