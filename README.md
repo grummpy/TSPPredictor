@@ -54,7 +54,15 @@ A decision journal on disk:
 tsp journal add --date 2026-10-06 --fund C --reason "held the lifecycle fund" --confidence 0.4
 ```
 
-That file is `data/user/journal.jsonl`. The dashboard keeps a separate journal in the browser's local storage, with export and import.
+That file is `data/user/journal.jsonl`. The dashboard keeps a separate journal in the browser's local storage. Both use the same versioned interchange document:
+
+```bash
+tsp journal export --path /tmp/tsp-journal.json
+tsp journal preview --path /tmp/tsp-journal.json  # shows new notes, duplicates, and conflicts; writes nothing
+tsp journal import --path /tmp/tsp-journal.json   # appends only new notes and saves a timestamped local backup first
+```
+
+Imports never replace a local note. An identical stable id is a duplicate; an id with different date, fund, reason, or confidence is a conflict that remains local unless the user resolves it outside the tool. The browser uses the same document, previews its additions/duplicates/conflicts, asks before merging new notes, and retains a browser-local pre-import copy. Journal operations are local notes only: they never access a TSP account or submit a transfer.
 
 ## Rules the engine models
 
@@ -100,6 +108,8 @@ Models, in the same backtester:
 
 Walk-forward uses an expanding window of at least five years, refit monthly (daily models) or annually (monthly models). Training labels whose price window reaches the test date are purged, and another h+lag decision rows are embargoed. Sigmoid calibration uses the last year of the fold. Every configuration is written to `dist/data/trials.json`. That count enters the deflated Sharpe ratio (Bailey and López de Prado, 2014).
 
+An accepted mixed-allocation interfund transfer resets the allocation at the posting close. It then retains those holdings until the next accepted post, so its weights drift with fund prices; it is not silently rebalanced every session. The output records both lag-1 and lag-2 results and exposes like-for-like lag comparisons in `dist/data/meta.json`. Those comparisons are historical sensitivity evidence, not forecasts or recommendations.
+
 A verdict is **Beat** only when excess compound growth is positive, the 90% block-bootstrap interval lies entirely above zero, and the deflated Sharpe is at least 0.95. **Underperformed** means the point estimate is negative and the interval lies entirely below zero. Everything else is **Inconclusive**. A negative point estimate is still stated in words when the verdict is Inconclusive.
 
 Why timing usually loses: the independent record assembled by Barfield Financial for 2019 did not show the tracked TSP allocation services ahead of simply holding the C Fund, and many advertised records are backtests rather than live results. Morningstar's 2025 Mind the Gap study found that investor timing subtracted about 1.2 percentage points a year from fund returns over the decade through 2024. This project is a way to test an idea against those baselines with the transfer rule enforced.
@@ -110,7 +120,7 @@ Nothing is transmitted. There is no account, no telemetry, and no API key in the
 
 ## Limitations
 
-- Macro series are the latest vintage, not the first print that was available on the day.
+- Macro series are the latest vintage, not the first print that was available on the day. `dist/data/meta.json` records the publication-date assumptions and explicitly labels first-print vintage data as unavailable.
 - Daily history starts in 2003. Monthly history starts in 1987. S and I start in 2001. L 2050 starts in 2011.
 - The I Fund's benchmark change on 2024-10-30 is flagged, and buy-and-hold I is reported before and after that date. Fair-value pricing means a one-day reversal rule on I is not a tradable edge; the diagnostic flags the toy version of that rule.
 - Event studies have small samples. Each event is different.

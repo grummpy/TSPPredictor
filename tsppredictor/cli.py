@@ -5,10 +5,12 @@ from __future__ import annotations
 import functools
 import json
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import typer
 
 from tsppredictor import NOT_ADVICE, __version__
+from tsppredictor.journal import JournalError, append_entry, export_journal, import_interchange, new_entry, preview_import
 from tsppredictor.paths import dist_dir, user_dir
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -117,12 +119,55 @@ def journal_add(
     confidence: float = typer.Option(0.0, help="User's own confidence from 0 to 1."),
 ) -> None:
     """Append a decision to data/user/journal.jsonl. That directory is gitignored."""
-    fund = fund.upper()
-    if fund not in {"G", "F", "C", "S", "I"}:
-        typer.echo("fund must be G, F, C, S, or I")
+    try:
+        row = new_entry(decision_date=date, fund=fund, reason=reason, confidence=confidence)
+    except JournalError as exc:
+        typer.echo(str(exc))
         raise typer.Exit(code=1)
-    row = {"date": date, "fund": fund, "reason": reason, "confidence": confidence}
     path = user_dir() / "journal.jsonl"
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(row) + "\n")
+    append_entry(path, row)
     typer.echo(f"Appended to {path}")
+
+
+@journal_app.command("export")
+def journal_export(
+    path: Path = typer.Option(..., "--path", help="Destination JSON interchange file."),
+) -> None:
+    """Export disk notes to the portable browser/CLI interchange format."""
+    try:
+        result = export_journal(user_dir() / "journal.jsonl", path)
+    except JournalError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@journal_app.command("preview")
+def journal_preview(
+    path: Path = typer.Option(..., "--path", help="Source JSON interchange file."),
+) -> None:
+    """Preview additions, duplicates, and conflicts without changing the disk journal."""
+    try:
+        result = preview_import(user_dir() / "journal.jsonl", path)
+    except JournalError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(result, indent=2))
+
+
+@journal_app.command("import")
+def journal_import(
+    path: Path = typer.Option(..., "--path", help="Source JSON interchange file."),
+    on_conflict: str = typer.Option(
+        "keep-local",
+        "--on-conflict",
+        help="keep-local imports only new notes; error leaves the journal unchanged if conflicts exist.",
+    ),
+) -> None:
+    """Append previewed notes and retain a timestamped local backup before changes."""
+    try:
+        result = import_interchange(user_dir() / "journal.jsonl", path, on_conflict=on_conflict)
+    except JournalError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps(result, indent=2))
