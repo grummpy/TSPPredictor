@@ -77,7 +77,7 @@ def test_monthly_features_do_not_leak_late_jobs_report(snap):
     assert float(feats.loc[when, "unemp_gap"]) == pytest.approx(float(gap.loc["2025-08"]))
 
 
-def test_ics_parse_and_merge_never_rewrites_history(tmp_path):
+def test_ics_parse_recognizes_releases_and_ignores_other_series():
     ics = (
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nDTSTART;VALUE=DATE:20261210\r\n"
         "SUMMARY:Consumer Price Index for November 2026\r\nEND:VEVENT\r\n"
@@ -89,12 +89,6 @@ def test_ics_parse_and_merge_never_rewrites_history(tmp_path):
     releases = rc.parse_bls_ics(ics)
     assert {(r.series, r.reference_month) for r in releases} == {
         ("bls_cpi", "2026-11"), ("bls_employment_situation", "2026-11"), ("bls_cpi", "2024-10")}
-    path = tmp_path / "cal.csv"
-    path.write_text("series,reference_month,release_date,source_url\nbls_cpi,2024-10,2024-11-13,x\n")
-    result = rc.merge_releases(path, releases)
-    assert result["added"] == 2
-    assert rc.release_date("bls_cpi", "2024-10", path=path) == date(2024, 11, 13)
-    assert rc.release_date("bls_cpi", "2026-11", path=path) == date(2026, 12, 10)
 
 
 def test_upcoming_releases_window():
@@ -479,16 +473,33 @@ def test_release_context_for_journal_entry():
 def test_fetch_ics_rejects_block_pages():
     class FakeResponse:
         text = "<html>Access Denied</html>"
+        status_code = 200
 
         def raise_for_status(self):
             return None
 
     class FakeSession:
         def get(self, *args, **kwargs):
-            self.headers = kwargs["headers"]
+            assert kwargs["allow_redirects"] is False
             return FakeResponse()
 
     with pytest.raises(RuntimeError, match="did not return a calendar"):
+        rc.fetch_ics(session=FakeSession())
+
+
+def test_fetch_ics_does_not_follow_redirects():
+    class Redirect:
+        status_code = 302
+
+        def raise_for_status(self):
+            pass
+
+    class FakeSession:
+        def get(self, url, **kwargs):
+            assert url == rc.ICS_URL and kwargs["allow_redirects"] is False
+            return Redirect()
+
+    with pytest.raises(RuntimeError, match="redirects are not followed"):
         rc.fetch_ics(session=FakeSession())
 
 

@@ -8,15 +8,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
-import re
 from pathlib import Path
 
 from tsppredictor import NOT_ADVICE
-
-
-def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "entry"
 
 
 def export_obsidian(entries: list[dict], vault: Path, folder: str = "TSP Journal") -> dict:
@@ -24,7 +20,10 @@ def export_obsidian(entries: list[dict], vault: Path, folder: str = "TSP Journal
     target.mkdir(parents=True, exist_ok=True)
     written = 0
     for entry in entries:
-        name = f"{entry['date']} {entry['fund']} {_slug(entry.get('reason', ''))[:30]}".strip()
+        # Journal IDs remain stable when a reason, date, or fund is edited.
+        # Hash the full ID so file names do not expose imported IDs or contain paths.
+        identity = hashlib.sha256(str(entry["id"]).encode("utf-8")).hexdigest()
+        name = f"TSP entry {identity}"
         tags = ["tsp-journal", *[str(t) for t in entry.get("tags", [])]]
         body = [
             "---",

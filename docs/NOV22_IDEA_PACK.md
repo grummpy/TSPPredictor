@@ -54,7 +54,7 @@ Headline fix: backtests no longer assume CPI on the 15th and unemployment on the
 | # | Connector | Status | Notes |
 |---|-----------|--------|-------|
 | 1 | ALFRED API | partial | Implemented and unit-tested; not exercised live (needs `FRED_API_KEY`) |
-| 2 | BLS release calendar ICS | partial | Parser and merge tested; BLS returns 403 to anonymous scripts, so `tsp update --release-calendar` needs `TSP_CONTACT_EMAIL` or `--ics-file` with a browser-downloaded ICS. The bundled calendar was built from the BLS archives. |
+| 2 | BLS release calendar ICS | partial | Future schedule is cached for CLI display only, never merged into the snapshot. BLS returned 403 in prior testing; use `tsp update --skip-tsp --release-calendar` with `TSP_CONTACT_EMAIL` if needed or `tsp update --ics-file` with a browser-downloaded ICS. The bundled calendar was built from the BLS archives. |
 | 3 | Fed H.15 DDP | done | Real package `bf17364827e38702b42a58cf8eaa3f78`; fixture is real Fed data; `tsp update --h15` |
 | 4 | Narwhals | partial | `connectors/frames.py` adapter; the pipeline is still pandas-native |
 | 5 | Pointblank | partial | Optional report alongside native price checks (not installed here) |

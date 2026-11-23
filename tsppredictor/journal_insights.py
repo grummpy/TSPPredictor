@@ -121,20 +121,36 @@ def _diary_path(user_dir: Path) -> Path:
     return Path(user_dir) / "ift_diary.jsonl"
 
 
+def _classify_ift_rows(rows: list[dict]) -> list[tuple[int, dict]]:
+    """Classify by posting date and use append order for ties on the same date."""
+    out = []
+    for order, (index, original) in enumerate(sorted(enumerate(rows), key=lambda pair: pair[1]["date"]), 1):
+        row = {
+            **original,
+            "unrestricted_number": order if order <= 2 else None,
+            "status": "unrestricted" if order <= 2 else "g_only" if original["g_only"] else "over_limit",
+        }
+        out.append((index, row))
+    return out
+
+
 def record_ift(user_dir: Path, *, when: date, from_mix: str, to_mix: str, reason: str,
                g_only: bool = False) -> dict:
-    """Log one interfund transfer with your reason; warns at the two-per-month limit.
+    """Log one posted transfer, manually flagging if only reallocating to G.
 
-    This is a personal diary only: it never submits anything to TSP.
+    This is a personal diary only: it never submits or verifies transfers at TSP.
     """
     month = when.strftime("%Y-%m")
-    existing = [row for row in read_ift_diary(user_dir) if row["month"] == month and not row["g_only"]]
-    counted = not g_only
-    if counted and len(existing) >= 2:
+    existing = [row for row in read_ift_diary(user_dir) if row["month"] == month]
+    old_over_limit = {i for i, old in _classify_ift_rows(existing) if old["status"] == "over_limit"}
+    candidate = {"logged_at": datetime.now(UTC).isoformat(), "date": when.isoformat(), "month": month,
+                 "from": from_mix, "to": to_mix, "reason": reason, "g_only": bool(g_only)}
+    classified = dict(_classify_ift_rows([*existing, candidate]))
+    if classified[len(existing)]["status"] == "over_limit":
         raise ValueError(f"{month} already has two unrestricted transfers; only G-only moves remain this month")
-    row = {"logged_at": datetime.now(UTC).isoformat(), "date": when.isoformat(), "month": month,
-           "from": from_mix, "to": to_mix, "reason": reason, "g_only": bool(g_only),
-           "unrestricted_number": len(existing) + 1 if counted else None}
+    if any(old["status"] == "over_limit" and i not in old_over_limit for i, old in classified.items()):
+        raise ValueError("Backdated entry would put an existing transfer over the two unrestricted transfer limit")
+    row = classified[len(existing)]
     path = _diary_path(user_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
@@ -151,9 +167,11 @@ def read_ift_diary(user_dir: Path) -> list[dict]:
 
 def ift_month_summary(user_dir: Path, month: str) -> dict:
     rows = [row for row in read_ift_diary(user_dir) if row["month"] == month]
-    unrestricted = [row for row in rows if not row["g_only"]]
-    return {"month": month, "transfers": rows, "unrestricted_used": len(unrestricted),
-            "unrestricted_left": max(0, 2 - len(unrestricted))}
+    classified = [row for _, row in _classify_ift_rows(rows)]
+    unrestricted = min(2, len(classified))
+    return {"month": month, "transfers": classified, "unrestricted_used": unrestricted,
+            "unrestricted_left": 2 - unrestricted,
+            "over_limit_logged": sum(row["status"] == "over_limit" for row in classified)}
 
 
 # --- Allocation Drift Viewer ------------------------------------------------
@@ -162,8 +180,10 @@ def allocation_drift(weights: np.ndarray, dates: pd.DatetimeIndex, post_dates: I
                      funds: tuple[str, ...] = ("G", "F", "C", "S", "I")) -> dict:
     """How holdings drifted between transfers: max absolute drift from the posted mix."""
     dates = pd.DatetimeIndex(dates)
-    posts = sorted({int(dates.get_loc(pd.Timestamp(d))) for d in post_dates if pd.Timestamp(d) in dates})
-    boundaries = [0, *posts, len(dates)]
+    # The posting-day weight applies to that session's returns. The transfer
+    # resets the holdings at the close and appears in the following row.
+    resets = {int(dates.get_loc(pd.Timestamp(d))) + 1 for d in post_dates if pd.Timestamp(d) in dates}
+    boundaries = [0, *sorted(resets - {len(dates)}), len(dates)]
     segments = []
     for start, end in zip(boundaries[:-1], boundaries[1:], strict=False):
         if end - start < 2:

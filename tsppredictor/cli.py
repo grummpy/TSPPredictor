@@ -54,9 +54,9 @@ def update(
     extras: bool = typer.Option(False, "--extras", help="Also fetch Tier B/C files into data/cache/."),
     news: bool = typer.Option(False, "--news", help="With --extras, also fetch the optional GDELT tone file."),
     release_calendar: bool = typer.Option(
-        False, "--release-calendar", help="Add new CPI/jobs dates from the official BLS schedule ICS."
+        False, "--release-calendar", help="Refresh display-only CPI/jobs dates from the official BLS schedule ICS."
     ),
-    ics_file: Path = typer.Option(None, "--ics-file", help="Use a BLS schedule ICS you downloaded instead of fetching."),
+    ics_file: Path = typer.Option(None, "--ics-file", help="Import a downloaded BLS schedule ICS offline (calendar only)."),
     h15: bool = typer.Option(False, "--h15", help="Pull Treasury yields from the Fed H.15 Data Download Program."),
     alfred: bool = typer.Option(False, "--alfred", help="Pull ALFRED first-print CPI/unemployment (needs FRED_API_KEY)."),
     skip_tsp: bool = typer.Option(False, "--skip-tsp", help="Only run the connector pulls requested above."),
@@ -65,7 +65,9 @@ def update(
     from tsppredictor.data.ingest_macro import fetch_optional
     from tsppredictor.data.ingest_tsp import update_tsp
 
-    if not skip_tsp:
+    if ics_file and (extras or news or h15 or alfred or force):
+        raise typer.BadParameter("--ics-file is offline and cannot be combined with other refresh options")
+    if not skip_tsp and not ics_file:
         result = update_tsp(force=force)
         typer.echo(json.dumps(result, indent=2))
     if extras:
@@ -73,14 +75,20 @@ def update(
         typer.echo(json.dumps(fetched, indent=2))
     if release_calendar or ics_file:
         from tsppredictor.data import release_calendar as rc
-        from tsppredictor.paths import snapshot_dir
 
         try:
-            text = ics_file.read_text(encoding="utf-8") if ics_file else rc.fetch_ics()
-            releases = rc.parse_bls_ics(text)
-            typer.echo(json.dumps(rc.merge_releases(snapshot_dir() / rc.CALENDAR_FILE, releases), indent=2))
-        except Exception as exc:  # offline: keep the bundled calendar and the fallback rule
-            typer.echo(f"Release calendar not updated ({exc}); the bundled calendar and fallback stay in use.")
+            if ics_file:
+                with ics_file.open("rb") as handle:
+                    payload = handle.read(rc.MAX_ICS_BYTES + 1)
+                if len(payload) > rc.MAX_ICS_BYTES:
+                    raise ValueError("Calendar exceeds the supported size")
+                text = payload.decode("utf-8")
+            else:
+                text = rc.fetch_ics()
+            typer.echo(json.dumps(rc.cache_schedule(text, source="local-ics" if ics_file else rc.ICS_URL), indent=2))
+        except Exception as exc:
+            typer.echo(f"Release schedule not updated ({exc}); previous schedule retained; the schedule refresh does not write the model snapshot.", err=True)
+            raise typer.Exit(code=1) from exc
     if h15:
         from tsppredictor.connectors import h15 as h15_connector
 
@@ -163,11 +171,12 @@ def check() -> None:
     alert_path.write_text(json.dumps(alert, indent=2))
     last_path.write_text(json.dumps({"fund": today.get("fund"), "signal_date": today.get("signal_date")}, indent=2))
     typer.echo(message)
-    from tsppredictor.data.release_calendar import upcoming
+    from tsppredictor.data.release_calendar import upcoming_display
 
-    for item in upcoming(days=7):
+    rows, _schedule = upcoming_display(days=7)
+    for item in rows:
         label = "CPI" if item.series == "bls_cpi" else "Jobs report"
-        typer.echo(f"Release day: {label} for {item.reference_month} on {item.release_date.isoformat()} (context only).")
+        typer.echo(f"Release day: {label} for {item.reference_month} on {item.release_date.isoformat()} (display only; {item.source}).")
 
 
 @app.command()
@@ -213,12 +222,13 @@ def vintage_replay() -> None:
 
 @app.command("releases")
 def releases(days: int = typer.Option(30, help="Days ahead to list.")) -> None:
-    """Upcoming CPI and jobs release dates from the bundled BLS calendar."""
-    from tsppredictor.data.release_calendar import coverage, upcoming
+    """Upcoming CPI/jobs releases, with an optional display-only schedule."""
+    from tsppredictor.data.release_calendar import coverage, upcoming_display
 
+    releases, schedule = upcoming_display(days=days)
     rows = [{"series": r.series, "month": r.reference_month, "date": r.release_date.isoformat(), "source": r.source}
-            for r in upcoming(days=days)]
-    typer.echo(json.dumps({"upcoming": rows, "coverage": coverage()}, indent=2))
+            for r in releases]
+    typer.echo(json.dumps({"upcoming": rows, "coverage": coverage(), "schedule": schedule}, indent=2))
 
 
 @journal_app.command("add")
@@ -380,11 +390,11 @@ def journal_sync(
 
 @ift_app.command("log")
 def ift_log(
-    date: str = typer.Option(..., help="Transfer date YYYY-MM-DD."),
+    date: str = typer.Option(..., help="Actual posting date YYYY-MM-DD (not request date)."),
     from_mix: str = typer.Option(..., "--from", help="Mix before, e.g. '100 C'."),
     to_mix: str = typer.Option(..., "--to", help="Mix after, e.g. '100 G'."),
     reason: str = typer.Option("", help="Why."),
-    g_only: bool = typer.Option(False, "--g-only", help="Move into G only (allowed after the two-transfer limit)."),
+    g_only: bool = typer.Option(False, "--g-only", help="User-confirmed move only into G. Still counts if one of the first two that month."),
 ) -> None:
     """Log one interfund transfer with your reason (diary only)."""
     from datetime import date as _date

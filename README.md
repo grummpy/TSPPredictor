@@ -123,6 +123,10 @@ See `docs/NOV22_IDEA_PACK.md` for the full checklist. In short:
 - `tsp ift log/summary`: a personal diary of the two monthly transfers (never submits anything).
 - `tsp releases` and release-day notes in `tsp check`; `tsp vintage-replay`.
 - Optional connectors, all off until installed/configured: ALFRED (`FRED_API_KEY`), BLS ICS, Fed H.15 DDP (`tsp update --h15`), Narwhals, Pointblank, whylogs, MLflow (`MLFLOW_TRACKING_URI`), Obsidian and Evidence.dev exports (`tsp export obsidian|evidence`), and LocalSend (`tsp export localsend --host <private LAN IP>`; loopback/private addresses only, CGNAT, multicast and link-local are refused).
+- For a local BLS schedule use `tsp update --ics-file /path/to/bls.ics` (offline); for a calendar-only BLS fetch use `tsp update --skip-tsp --release-calendar`. The validated upcoming schedule is cached locally with source type and SHA-256 and used only by `tsp releases` and the display alerts in `tsp check`. It does not alter the bundled historical calendar, report/model inputs, or verified builds. A local ICS is user-supplied, not proof of publication.
+- The personal IFT diary uses the actual posting date. The first two logged postings in each month count even if one only reallocates to G. The `--g-only` classification is supplied by the user. Summaries recalculate legacy logs without rewriting old entries.
+
+Obsidian exports use a stable filename derived from each journal entry ID. Re-export updates the same entry, even after editing its contents; older date-and-reason-named files are left untouched.
 
 ## Privacy
 
