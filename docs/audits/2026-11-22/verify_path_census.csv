@@ -1,0 +1,7 @@
+file,line,function,lang,classification,reason
+tests/test_integrity.py,109,test_11_hand_checked_returns,py,NOT_APPLICABLE,"test helper, not a production gate"
+tsppredictor/backtest/walkforward.py,27,_validated_target,py,fail-closed,failure paths raise or return a failing result; unexpected errors propagate
+tsppredictor/cli.py,80,check,py,fail-closed,failure paths raise or return a failing result; unexpected errors propagate
+tsppredictor/data/snapshot.py,84,verify_manifest,py,fail-closed (via load_snapshot),reports findings; load_snapshot raises on mismatched/required_missing and MANIFEST.csv is itself required (probe: deleting it plus tampering a CSV is refused)
+tsppredictor/data/snapshot.py,184,check_integrity,py,fail-closed,failure paths raise or return a failing result; unexpected errors propagate
+tsppredictor/rules/ift.py,162,TransferBook._check_account,py,fail-closed,failure paths raise or return a failing result; unexpected errors propagate
