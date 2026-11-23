@@ -60,7 +60,8 @@ def test_14_poisoned_future_does_not_change_the_past(snap, prices):
 
 
 def test_15_publication_lags_and_nber(snap, prices):
-    assert cpi_available_date("2024-10") == date(2024, 11, 15)
+    # Real BLS release date for October 2024 CPI (not the old "15th" assumption).
+    assert cpi_available_date("2024-10") == date(2024, 11, 13)
     dates = pd.bdate_range("2023-01-02", "2024-12-31")
     tiny = pd.DataFrame(
         {fund: np.linspace(10, 20, len(dates)) for fund in ("G", "F", "C", "S", "I")},
@@ -74,8 +75,8 @@ def test_15_publication_lags_and_nber(snap, prices):
     gpr = snap.gpr_daily
     events = snap.events.iloc[0:0]
     built = build_features(tiny, h15, bls, gpr, events)
-    before = built.loc[pd.Timestamp("2024-11-14"), "cpi_yoy"]
-    after = built.loc[pd.Timestamp("2024-11-15"), "cpi_yoy"]
+    before = built.loc[pd.Timestamp("2024-11-12"), "cpi_yoy"]
+    after = built.loc[pd.Timestamp("2024-11-13"), "cpi_yoy"]
     assert pd.isna(before) or float(before) < 0.5
     assert float(after) > 1.0
 

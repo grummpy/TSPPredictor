@@ -240,3 +240,9 @@ input, select { padding: 0.35rem 0.5rem; max-width: 100%; }
   .grid-2 { grid-template-columns: 1fr; }
   main { padding: 0.8rem; }
 }
+
+/* Provenance badge */
+#provenance-badge { display: inline-block; margin: 0 0 12px; }
+#provenance-badge.ok { color: var(--g); border-color: var(--g); }
+#provenance-badge.warn { color: #ffb74d; border-color: #ffb74d; }
+#j-conflicts { margin: 12px 0; }

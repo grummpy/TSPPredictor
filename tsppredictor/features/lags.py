@@ -16,17 +16,21 @@ def next_weekday(d: date) -> date:
 
 
 def cpi_available_date(month: str) -> date:
-    """CPI for month YYYY-MM is treated as available on the 15th of the next month."""
-    period = pd.Period(month, freq="M")
-    nxt = period + 1
-    return date(int(nxt.year), int(nxt.month), 15)
+    """CPI for month YYYY-MM becomes visible on its actual BLS release date.
+
+    Uses the bundled BLS release calendar; outside its coverage a conservative
+    offline fallback day is used (see ``tsppredictor.data.release_calendar``).
+    """
+    from tsppredictor.data.release_calendar import release_date
+
+    return release_date("bls_cpi", month)
 
 
 def unemployment_available_date(month: str) -> date:
-    """Unemployment for month YYYY-MM is treated as available on the 8th of the next month."""
-    period = pd.Period(month, freq="M")
-    nxt = period + 1
-    return date(int(nxt.year), int(nxt.month), 8)
+    """Unemployment for month YYYY-MM becomes visible on its Employment Situation release date."""
+    from tsppredictor.data.release_calendar import release_date
+
+    return release_date("bls_employment_situation", month)
 
 
 def shift_nyfed_dates(frame: pd.DataFrame, date_col: str = "date") -> pd.DataFrame:

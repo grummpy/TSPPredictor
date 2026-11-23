@@ -35,6 +35,10 @@ def user_dir() -> Path:
 
 
 def dist_dir() -> Path:
-    path = repo_root() / "dist"
+    """Build output folder; ``TSP_DIST_DIR`` redirects it (used by the reproducer)."""
+    import os
+
+    override = os.environ.get("TSP_DIST_DIR")
+    path = Path(override) if override else repo_root() / "dist"
     path.mkdir(parents=True, exist_ok=True)
     return path

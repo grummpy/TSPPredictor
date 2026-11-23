@@ -27,6 +27,7 @@
     <main>
       <p class="advice">{{ not_advice }}</p>
       <p id="alert" class="banner">Loading the local alert file.</p>
+      <p id="provenance-badge" class="badge muted" aria-live="polite">Build provenance: checking.</p>
 
       <section id="today" class="page active">
         <h1>Today</h1>
@@ -406,13 +407,31 @@
             </label>
             <label>Reason <input id="j-reason" type="text"></label>
             <label>Your confidence, 0 to 1 <input id="j-conf" type="number" min="0" max="1" step="0.01" value="0.5"></label>
+            <label>Tags, comma separated <input id="j-tags" type="text" placeholder="ift-limit, news"></label>
             <button type="submit">Save in this browser</button>
           </form>
           <button type="button" id="j-export">Export journal</button>
           <label>Import journal <input id="j-import" type="file" accept="application/json"></label>
           <p id="j-status" class="muted" aria-live="polite"></p>
+          <div id="j-conflicts" hidden>
+            <h3>Conflicts: same id, different content</h3>
+            <table class="table" id="j-conflict-table">
+              <caption>Your browser copy and the incoming file, side by side</caption>
+              <thead><tr><th>Id</th><th>In this browser</th><th>Incoming file</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" id="j-import-new">Import new entries only</button>
+            <button type="button" id="j-import-prefer">Import and prefer incoming</button>
+            <button type="button" id="j-import-cancel">Cancel</button>
+          </div>
+          <label>Filter by tag <input id="j-filter" type="text"></label>
+          <table class="table" id="j-outcomes">
+            <caption>Your entries and what the chosen fund did next (from the bundled daily returns)</caption>
+            <thead><tr><th>Date</th><th>Fund</th><th>Confidence</th><th>Tags</th><th>Next 21 sessions</th><th>Next 63 sessions</th><th>G over 21</th></tr></thead>
+            <tbody></tbody>
+          </table>
           <pre id="j-list"></pre>
-          <p class="muted">Export/import uses the versioned TSP journal format shared with <code>tsp journal export</code>, <code>preview</code>, and <code>import</code>. Browser imports show duplicates and conflicts before merging, retain local conflicts, and save a recoverable browser-local backup before a change. The command-line journal writes only <code>data/user/journal.jsonl</code> on this machine.</p>
+          <p class="muted">Export/import uses the versioned TSP journal format shared with <code>tsp journal export</code>, <code>preview</code>, and <code>import</code>. Browser imports show duplicates and conflicts side by side before merging, keep local copies unless you choose to prefer incoming, and save a recoverable browser-local backup before a change. The command-line journal writes only <code>data/user/journal.jsonl</code> on this machine.</p>
         </article>
       </section>
 
@@ -453,9 +472,71 @@
           </table>
         </article>
         <article class="card">
+          <h2>When macro data became public</h2>
+          <table class="table">
+            <caption>Publication timing used by the backtests</caption>
+            <thead><tr><th>Series</th><th>When it enters</th><th>Vintage</th></tr></thead>
+            <tbody>
+              {% for rule in meta.macro_vintage.availability_rules %}
+              <tr><td>{{ rule.series }}</td><td>{{ rule.publication_timing }}</td><td>{{ rule.source_vintage }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% if meta.macro_vintage.release_calendar is defined %}<p class="muted">Release calendar coverage:{% for name, cov in meta.macro_vintage.release_calendar.items() %} {{ "CPI" if name == "bls_cpi" else "jobs report" }} {{ cov.first_month }} to {{ cov.last_month }} ({{ cov.releases }} releases; earlier months use day {{ cov.fallback_day }} of the next month){% if not loop.last %};{% endif %}{% endfor %}.</p>{% endif %}
+          {% if meta.vintage_gap_report %}
+          <table class="table">
+            <caption>Vintage gaps: series without first-print data</caption>
+            <thead><tr><th>Series</th><th>First print</th><th>Gap</th></tr></thead>
+            <tbody>
+              {% for row in meta.vintage_gap_report.series %}
+              <tr><td>{{ row.series }}</td><td>{{ "yes" if row.first_print else "no" }}</td><td>{% if row.gap_months %}{{ row.gap_months }} months ({{ row.gap_start }} to {{ row.gap_end }}){% else %}none{% endif %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </article>
+        <article class="card">
+          <h2>What each day of execution lag costs</h2>
+          <p>A transfer requested after the close posts at a later session. These rows compare the same strategy run at two execution lags. A positive number means each extra step of lag cost that many percentage points of CAGR.</p>
+          <table class="table" id="lag-cost">
+            <caption>CAGR change per extra session of lag</caption>
+            <thead><tr><th>Strategy</th><th>Cadence</th><th>Horizon</th><th>CAGR lost per extra lag step</th><th>Plain language</th></tr></thead>
+            <tbody>
+              {% for row in meta.lag_cost_table %}
+              <tr><td>{{ row.name }}</td><td>{{ row.cadence }}</td><td>{{ row.horizon }}</td><td>{{ "%+.2f pts"|format(row.cagr_lost_per_extra_lag * 100) if row.cagr_lost_per_extra_lag is not none else "n/a" }} per {{ row.unit }}</td><td>{{ row.plain or "" }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% set unpaired = meta.execution_lag_sensitivity.unpaired %}
+          <p class="muted">Strategies tested at only one lag: {% if unpaired %}{{ unpaired|length }} ({% for row in unpaired[:8] %}{{ row.name if row.name is defined else row.id }}{% if not loop.last %}, {% endif %}{% endfor %}{% if unpaired|length > 8 %}, ...{% endif %}){% else %}none{% endif %}.</p>
+          {% if meta.execution_lag_sensitivity.lag_invariant %}<p class="muted">Lag does not apply to {{ meta.execution_lag_sensitivity.lag_invariant|length }} buy-and-hold slices (no transfers).</p>{% endif %}
+          {% if meta.execution_lag_sensitivity.missing_runs %}
+          <p class="muted">Missing lag runs: {{ meta.execution_lag_sensitivity.missing_runs|length }}.</p>
+          {% endif %}
+        </article>
+        <article class="card">
+          <h2>Price drift between transfers</h2>
+          <p>Backtests hold fixed shares between transfers, so the mix drifts with prices like a real account. The legacy model re-weighted every session.</p>
+          <table class="table">
+            <caption>Monthly rules: price drift vs constant target (lag 1)</caption>
+            <thead><tr><th>Rule</th><th>CAGR with drift</th><th>CAGR constant target</th><th>Difference</th></tr></thead>
+            <tbody>
+              {% for row in meta.drift_vs_constant %}
+              <tr><td>{{ row.name }}</td><td>{{ "%.2f%%"|format(row.price_drift.cagr * 100) }}</td><td>{{ "%.2f%%"|format(row.constant_target.cagr * 100) }}</td><td>{{ "%+.2f%%"|format(row.cagr_difference * 100) }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <label>Allocation drift viewer <select id="drift-rule"></select></label>
+          <div id="drift-view" class="muted">Loading allocation drift.</div>
+        </article>
+        <article class="card">
           <h2>Limitations</h2>
           <ul>
-            <li>Macro series are the latest vintage, not the vintage that was published on the day.</li>
+            {% if meta.macro_vintage.first_print_vintages_available %}
+            <li>CPI and unemployment use ALFRED first-print values where cached; other macro series are the latest vintage.</li>
+            {% else %}
+            <li>Macro series are the latest vintage, not the vintage that was published on the day. CPI and unemployment do enter only on their real BLS release dates.</li>
+            {% endif %}
             <li>Daily share prices start in 2003. Monthly returns start in 1987. S and I start later.</li>
             <li>The I Fund changed benchmark on 2024-10-30. Results are split there. A one-session rule that buys I after a large C Fund up day is flagged and is not a strategy.</li>
             <li>Event studies are small samples. Each event is different.</li>

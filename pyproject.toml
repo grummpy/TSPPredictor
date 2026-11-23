@@ -18,6 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest==8.3.3", "ruff==0.8.4"]
+# Optional connectors; each stays off until its package (and any key) is present.
+connectors = ["requests>=2.31"]
+frames = ["narwhals>=1.0"]
+validation = ["pointblank>=0.8"]
+profiling = ["whylogs>=1.3"]
+tracking = ["mlflow>=2.10"]
 
 [project.scripts]
 tsp = "tsppredictor.cli:app"

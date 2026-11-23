@@ -42,7 +42,7 @@ from tsppredictor.backtest.walkforward import (
 from tsppredictor.calendar import project_tsp_days
 from tsppredictor.data.ingest_macro import load_cached_nyfed, load_cached_vix
 from tsppredictor.data.snapshot import check_integrity, core_prices, load_snapshot
-from tsppredictor.evidence import lag_sensitivity, macro_vintage_metadata
+from tsppredictor.evidence import lag_cost_table, lag_sensitivity, macro_vintage_metadata, vintage_gap_report
 from tsppredictor.features.monthly import build_monthly_features, monthly_price_index
 from tsppredictor.features.pipeline import build_features
 from tsppredictor.features.spec import FEATURES, feature_dicts, model_feature_names
@@ -72,6 +72,8 @@ BLOCKS = (
     {"cadence": "daily", "h": 21, "lag": 1, "fit_hgb": True, "primary": True},
     {"cadence": "daily", "h": 21, "lag": 2, "fit_hgb": True, "primary": False},
     {"cadence": "daily", "h": 63, "lag": 1, "fit_hgb": False, "primary": False},
+    # Pairs the 63-session block so lag sensitivity has no unpaired strategies.
+    {"cadence": "daily", "h": 63, "lag": 2, "fit_hgb": False, "primary": False},
     {"cadence": "monthly", "h": 1, "lag": 1, "fit_hgb": True, "primary": False},
     {"cadence": "monthly", "h": 1, "lag": 2, "fit_hgb": True, "primary": False},
 )
@@ -872,11 +874,16 @@ def run_build() -> dict:
     prices = core_prices(snap)
     vix = load_cached_vix()
     nyfed = load_cached_nyfed()
+    # Point-in-time macro inputs: first-print ALFRED values when they are cached.
+    from tsppredictor.connectors.alfred import apply_first_print, load_cached_first_print
+
+    first_print = load_cached_first_print()
+    bls = apply_first_print(snap.bls, first_print) if first_print else snap.bls
     _log("building daily features")
-    features = build_features(prices, snap.h15, snap.bls, snap.gpr_daily, snap.events, vix=vix, nyfed=nyfed)
+    features = build_features(prices, snap.h15, bls, snap.gpr_daily, snap.events, vix=vix, nyfed=nyfed)
     _log("building monthly features")
     monthly_px = monthly_price_index(snap.monthly)
-    monthly_features = build_monthly_features(snap.monthly, snap.h15, snap.bls, snap.gpr_monthly)
+    monthly_features = build_monthly_features(snap.monthly, snap.h15, bls, snap.gpr_monthly)
     monthly_l = _compound_monthly_column(snap.monthly, "L 2050", monthly_px.index)
     daily_l = snap.daily["L2050"] if "L2050" in snap.daily.columns else pd.Series(np.nan, index=prices.index)
     l_frame = pd.DataFrame(index=prices.index)
@@ -928,6 +935,21 @@ def run_build() -> dict:
     xray = l_fund_xray(prices, daily_l.rename("L2050"))
     harbor = g_versus_f(prices, snap.monthly)
     stale = toy_buy_i_after_c_up()
+    _log("drift vs constant, validation, profile")
+    from tsppredictor.backtest.compare import drift_vs_constant
+    from tsppredictor.connectors.profiling import profile_snapshot
+    from tsppredictor.connectors.validation import validate_prices
+    from tsppredictor.journal_insights import allocation_drift
+
+    drift_rows = []
+    drift_views = {}
+    for rule_id in RULES:
+        comparison = drift_vs_constant(rule_id, monthly_features, monthly_px, lag=1)
+        sim, sim_dates = comparison.pop("_drift_sim"), comparison.pop("_dates")
+        drift_rows.append(comparison)
+        drift_views[rule_id] = allocation_drift(sim["weights"], sim_dates, sim["post_dates"])
+    price_validation = validate_prices(prices)
+    price_profile = profile_snapshot(prices)
     refresh_path = snapshot_dir() / "REFRESH.json"
     if refresh_path.exists():
         refresh = json.loads(refresh_path.read_text())
@@ -952,8 +974,13 @@ def run_build() -> dict:
         "nyfed_in_features": "nyfed_rec_prob" in features.columns,
         "stale_price_toy": stale,
         "i_fund_break": I_FUND_BREAK,
-        "macro_vintage": macro_vintage_metadata(),
+        "macro_vintage": macro_vintage_metadata(first_print),
+        "vintage_gap_report": vintage_gap_report(first_print, as_of=as_of),
         "execution_lag_sensitivity": lag_sensitivity(scoreboard),
+        "lag_cost_table": lag_cost_table(scoreboard),
+        "drift_vs_constant": drift_rows,
+        "price_validation": {k: v for k, v in price_validation.items() if k != "checks"},
+        "price_profile_flags": price_profile["flags"],
         "elapsed_seconds": round(time.perf_counter() - started, 1),
     }
     # Post-2008 slice note for the primary ensemble, already the daily window.
@@ -1086,5 +1113,16 @@ def run_build() -> dict:
             "event_counts": [{"category": row["category"], "n": row["n_events"]} for row in events["categories"]],
         },
     )
+    _dump(data / "allocation-drift.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of,
+                                           "cadence": "monthly", "lag": 1, "rules": drift_views,
+                                           "note": "Monthly rule backtests; holdings drift with prices between transfers."})
+    from tsppredictor.connectors.tracking import log_run
+    from tsppredictor.provenance import stamp_outputs, write_provenance_badge
+
+    stamp_outputs(dist)
+    write_provenance_badge(dist, snapshot_dir())
+    primary_row = next((r for r in scoreboard if r.get("id") == "ensemble" and r.get("cadence") == "daily"), None)
+    log_run({"data_as_of": as_of, "blocks": len(BLOCKS), "n_trials": n_trials_box[0]},
+            {f"ensemble_{k}": v for k, v in ((primary_row or {}).get("metrics") or {}).items()})
     _log(f"build finished in {meta['elapsed_seconds']}s, {len(scoreboard)} scoreboard rows, {n_trials_box[0]} trials")
     return {"today": today, "scoreboard": scoreboard, "meta": meta, "dist": str(dist)}

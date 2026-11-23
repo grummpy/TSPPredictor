@@ -38,3 +38,4 @@ tsp_annual_returns_pct.csv,40,23,1987,2026,a78cf44cb07c6133
 tsp_daily_share_prices.csv,5830,17,2003-05-31,2026-10-05,33bbd1098505f2f6
 tsp_monthly_returns_pct.csv,474,21,1987-04,2026-09,d2ee429b84696e58
 tsp_retired_lfunds_monthly_returns_pct.csv,238,4,2005-08,2025-05,9daee78024e9807a
+macro/primary/bls_release_calendar.csv,662,4,1995-01,2026-11,7b26eaede240cb14
