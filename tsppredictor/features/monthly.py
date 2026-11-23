@@ -2,8 +2,8 @@
 
 Window names match the daily frame so the same rules can run. On this cadence
 ``c_mom_252`` is the 12-month return, ``c_mom_63`` is 3 months, ``c_mom_21`` is
-1 month, and ``c_above_sma200`` uses the 10-month average. Macro series are
-lagged a full month, which is longer than the daily one-weekday lag.
+1 month, and ``c_above_sma200`` uses the 10-month average. BLS macro series
+become visible on their actual release dates (bundled BLS calendar).
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from tsppredictor.calendar import is_scheduled_pre_holiday
+from tsppredictor.features.lags import asof_values, cpi_available_date, unemployment_available_date
 
 CORE = {
     "G Fund": "G",
@@ -141,13 +142,18 @@ def build_monthly_features(monthly: pd.DataFrame, h15: pd.DataFrame, bls: pd.Dat
     bls["unemployment_rate_sa"] = pd.to_numeric(bls["unemployment_rate_sa"], errors="coerce")
     bls = bls.drop_duplicates("month").set_index("month").sort_index()
     cpi = bls["cpi_u_sa"]
-    yoy = (cpi / cpi.shift(12) - 1.0).shift(1)  # previous month's release
-    chg3 = (cpi / cpi.shift(3) - 1.0).shift(1)
-    gap = (bls["unemployment_rate_sa"] - bls["unemployment_rate_sa"].rolling(12, min_periods=12).min()).shift(1)
+    yoy = cpi / cpi.shift(12) - 1.0
+    chg3 = cpi / cpi.shift(3) - 1.0
+    gap = bls["unemployment_rate_sa"] - bls["unemployment_rate_sa"].rolling(12, min_periods=12).min()
+    # Each month's value becomes visible on its actual BLS release date (not a
+    # fixed one-month shift): a shutdown-delayed release stays invisible until
+    # it was really published.
+    cpi_visible = pd.Series([pd.Timestamp(cpi_available_date(m)) for m in bls.index])
+    jobs_visible = pd.Series([pd.Timestamp(unemployment_available_date(m)) for m in bls.index])
+    features["cpi_yoy"] = asof_values(index, cpi_visible, yoy.reset_index(drop=True)).to_numpy()
+    features["cpi_chg_3m"] = asof_values(index, cpi_visible, chg3.reset_index(drop=True)).to_numpy()
+    features["unemp_gap"] = asof_values(index, jobs_visible, gap.reset_index(drop=True)).to_numpy()
     key = index.to_period("M").astype(str)
-    features["cpi_yoy"] = yoy.reindex(key).to_numpy()
-    features["cpi_chg_3m"] = chg3.reindex(key).to_numpy()
-    features["unemp_gap"] = gap.reindex(key).to_numpy()
     features["g_minus_tbill"] = features["g_mom_21"] * 12.0 * 100.0 - aligned["ust_3m"].to_numpy()
     features["vol_level"] = rv
     features["vol_pct"] = features["c_vol_pct"]

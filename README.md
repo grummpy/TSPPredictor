@@ -94,9 +94,9 @@ NBER recession dates are an evaluation flag only. They are not model features.
 
 ## Methodology
 
-Features at date t use prices through the close of t and macro releases dated as available by t. CPI is treated as available on the 15th of the following month, unemployment on the 8th, H.15 on the next weekday, and the daily GPR index one calendar day later. Scalers, calibration, and the small hyperparameter search are fit inside each training fold.
+Features at date t use prices through the close of t and macro releases dated as available by t. CPI and unemployment become available on their actual BLS release dates from `data/snapshot/macro/primary/bls_release_calendar.csv` (offline; shutdown-delayed releases stay invisible until they were really published, and months before the calendar's coverage use a conservative fallback day), H.15 on the next weekday, and the daily GPR index one calendar day later. Scalers, calibration, and the small hyperparameter search are fit inside each training fold.
 
-The label is the fund with the highest excess return over G across the next h sessions, starting after the lag. h is 21 sessions on the daily cadence and 1 month on the monthly cadence. A 63-session daily horizon is also scored at lag 1. G wins when every risky excess is negative. Funds that do not exist yet are ignored.
+The label is the fund with the highest excess return over G across the next h sessions, starting after the lag. h is 21 sessions on the daily cadence and 1 month on the monthly cadence. A 63-session daily horizon is also scored at lags 1 and 2, so every strategy has a like-for-like lag comparison. G wins when every risky excess is negative. Funds that do not exist yet are ignored.
 
 Models, in the same backtester:
 
@@ -114,13 +114,23 @@ A verdict is **Beat** only when excess compound growth is positive, the 90% bloc
 
 Why timing usually loses: the independent record assembled by Barfield Financial for 2019 did not show the tracked TSP allocation services ahead of simply holding the C Fund, and many advertised records are backtests rather than live results. Morningstar's 2025 Mind the Gap study found that investor timing subtracted about 1.2 percentage points a year from fund returns over the decade through 2024. This project is a way to test an idea against those baselines with the transfer rule enforced.
 
+## Nov 22 additions
+
+See `docs/NOV22_IDEA_PACK.md` for the full checklist. In short:
+
+- `tsp verify` rechecks every SHA-256 in `dist/data/build-manifest.json`; `tsp serve` re-verifies and the page shows a provenance badge. `tsp reproduce` rebuilds into `data/cache/reproduce` and confirms the outputs match (timing fields excluded).
+- `tsp journal add --tags`, `journal list --tag`, `journal diff`, `journal stats`, `journal review --month`, `journal calibration [--html card.html]`, `journal sync --folder`, and `journal import --on-conflict prefer-incoming` (always after a backup). Interchange files carry the not-advice notice.
+- `tsp ift log/summary`: a personal diary of the two monthly transfers (never submits anything).
+- `tsp releases` and release-day notes in `tsp check`; `tsp vintage-replay`.
+- Optional connectors, all off until installed/configured: ALFRED (`FRED_API_KEY`), BLS ICS, Fed H.15 DDP (`tsp update --h15`), Narwhals, Pointblank, whylogs, MLflow (`MLFLOW_TRACKING_URI`), Obsidian and Evidence.dev exports (`tsp export obsidian|evidence`), and LocalSend (`tsp export localsend --host <private LAN IP>`; loopback/private addresses only, CGNAT, multicast and link-local are refused).
+
 ## Privacy
 
 Nothing is transmitted. There is no account, no telemetry, and no API key in the repository. A balance and a retirement year, if you type them, stay in the browser's local storage. `tsp journal add` and `tsp check` write under `data/user/`, which is gitignored, along with `data/cache/` and `.env`. Dollar figures on the page are labeled hypothetical and default to $100,000.
 
 ## Limitations
 
-- Macro series are the latest vintage, not the first print that was available on the day. `dist/data/meta.json` records the publication-date assumptions and explicitly labels first-print vintage data as unavailable.
+- Macro values are the latest vintage, not the first print that was available on the day, unless ALFRED first prints are cached (`FRED_API_KEY` plus `tsp update --alfred --skip-tsp`). Release *timing* is real either way. `dist/data/meta.json` records the vintage status and a vintage gap report.
 - Daily history starts in 2003. Monthly history starts in 1987. S and I start in 2001. L 2050 starts in 2011.
 - The I Fund's benchmark change on 2024-10-30 is flagged, and buy-and-hold I is reported before and after that date. Fair-value pricing means a one-day reversal rule on I is not a tradable edge; the diagnostic flags the toy version of that rule.
 - Event studies have small samples. Each event is different.

@@ -8,6 +8,7 @@ extra embargo of h+lag decision rows is dropped on top of that.
 
 from __future__ import annotations
 
+import warnings
 from datetime import date
 
 import numpy as np
@@ -105,6 +106,13 @@ def simulate_targets(
     """
     dates = pd.DatetimeIndex(dates)
     n = len(dates)
+    if prices is None:
+        warnings.warn(
+            "simulate_targets() without prices uses the legacy constant-target model; "
+            "pass prices= so holdings drift between transfers like a real account",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     targets = np.asarray(targets, dtype=float)
     if initial is None:
         if np.isfinite(targets[0]).all():

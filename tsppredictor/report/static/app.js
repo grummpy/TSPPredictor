@@ -470,7 +470,20 @@
     }
     const id = row.id ? String(row.id) : browserJournalId();
     if (!id || id.length > 160) throw new Error("Journal id is invalid.");
-    return { id, date, fund, reason: String(row.reason || ""), confidence };
+    const entry = { id, date, fund, reason: String(row.reason || ""), confidence };
+    const tags = normalizeTags(row.tags);
+    if (tags.length) entry.tags = tags;
+    return entry;
+  }
+
+  function normalizeTags(raw) {
+    const list = Array.isArray(raw) ? raw : String(raw || "").split(",");
+    const seen = [];
+    list.forEach((item) => {
+      const tag = String(item || "").trim().toLowerCase().replace(/\s+/g, "-").slice(0, 40);
+      if (tag && !seen.includes(tag)) seen.push(tag);
+    });
+    return seen.slice(0, 20);
   }
 
   function readJournal() {
@@ -488,12 +501,16 @@
     localStorage.setItem(JOURNAL_KEY, JSON.stringify(rows));
   }
 
+  const NOT_ADVICE_TEXT = (document.querySelector(".advice") || {}).textContent || "Educational decision support. Not financial advice.";
+
   function journalDocument(rows) {
-    return { schema_version: JOURNAL_SCHEMA_VERSION, kind: JOURNAL_KIND, entries: rows };
+    return { schema_version: JOURNAL_SCHEMA_VERSION, kind: JOURNAL_KIND, not_advice: NOT_ADVICE_TEXT.trim(), entries: rows };
   }
 
   function canonicalJournalEntry(row) {
-    return JSON.stringify({ date: row.date, fund: row.fund, reason: row.reason, confidence: row.confidence });
+    const payload = { date: row.date, fund: row.fund, reason: row.reason, confidence: row.confidence };
+    if (row.tags && row.tags.length) payload.tags = row.tags;
+    return JSON.stringify(payload);
   }
 
   function previewJournalImport(localRows, incomingRows) {
@@ -508,7 +525,7 @@
       const local = localById.get(row.id);
       if (!local) additions.push(row);
       else if (canonicalJournalEntry(local) === canonicalJournalEntry(row)) duplicates.push(row.id);
-      else conflicts.push(row.id);
+      else conflicts.push({ id: row.id, local, incoming: row });
     });
     return { additions, duplicates, conflicts };
   }
@@ -518,11 +535,112 @@
     if (node) node.textContent = message;
   }
 
+  let returnsPayload = null;
+
+  function entryOutcome(entry, days, fundKey) {
+    // Mirrors journal_insights.entry_outcome: last close at or before the decision to `days` sessions later.
+    if (!returnsPayload) return null;
+    const dates = returnsPayload.dates;
+    const start = dates.findIndex((d) => d > entry.date);
+    if (start <= 0) return null;
+    const base = start - 1;
+    const end = base + days;
+    if (end >= dates.length) return null;
+    const series = returnsPayload[fundKey || entry.fund];
+    if (!series) return null;
+    let wealth = 1;
+    for (let i = base + 1; i <= end; i += 1) {
+      const r = series[i];
+      if (r === null || r === undefined) return null;
+      wealth *= 1 + r;
+    }
+    return wealth - 1;
+  }
+
+  function pct(value) {
+    return value === null || value === undefined ? "pending" : (value >= 0 ? "+" : "") + (value * 100).toFixed(2) + "%";
+  }
+
+  function paintOutcomes(rows) {
+    const body = document.querySelector("#j-outcomes tbody");
+    if (!body) return;
+    const filterNode = document.getElementById("j-filter");
+    const tag = filterNode ? filterNode.value.trim().toLowerCase() : "";
+    body.textContent = "";
+    rows.filter((row) => !tag || (row.tags || []).includes(tag)).forEach((row) => {
+      const tr = document.createElement("tr");
+      [row.date, row.fund, row.confidence.toFixed(2), (row.tags || []).join(", "),
+        pct(entryOutcome(row, 21)), pct(entryOutcome(row, 63)), pct(entryOutcome(row, 21, "G"))].forEach((text) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  }
+
   function paintJournal() {
     const node = document.getElementById("j-list");
     if (!node) return;
     const rows = readJournal();
     node.textContent = rows.length ? JSON.stringify(journalDocument(rows), null, 2) : "No journal entries in this browser.";
+    paintOutcomes(rows);
+  }
+  const filterInput = document.getElementById("j-filter");
+  if (filterInput) filterInput.addEventListener("input", () => paintOutcomes(readJournal()));
+
+  function describeEntry(row) {
+    return row.date + " " + row.fund + " conf " + Number(row.confidence).toFixed(2) +
+      (row.tags && row.tags.length ? " [" + row.tags.join(", ") + "]" : "") + (row.reason ? " - " + row.reason : "");
+  }
+
+  function showConflicts(conflicts) {
+    const box = document.getElementById("j-conflicts");
+    const body = document.querySelector("#j-conflict-table tbody");
+    if (!box || !body) return;
+    body.textContent = "";
+    conflicts.forEach((item) => {
+      const tr = document.createElement("tr");
+      [item.id, describeEntry(item.local), describeEntry(item.incoming)].forEach((text) => {
+        const td = document.createElement("td");
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    box.hidden = conflicts.length === 0;
+  }
+
+  let pendingImport = null;
+
+  function applyImport(preferIncoming) {
+    if (!pendingImport) return;
+    const { localRows, preview, summary } = pendingImport;
+    localStorage.setItem(JOURNAL_BACKUP_KEY, JSON.stringify({ at: new Date().toISOString(), entries: localRows }));
+    let merged = localRows.slice();
+    if (preferIncoming) {
+      const replacements = new Map(preview.conflicts.map((item) => [item.id, item.incoming]));
+      merged = merged.map((row) => replacements.get(row.id) || row);
+    }
+    merged = merged.concat(preview.additions);
+    writeJournal(merged);
+    const replaced = preferIncoming ? preview.conflicts.length : 0;
+    journalStatus(summary + " Imported " + preview.additions.length + " new and replaced " + replaced + " conflicting entries; a browser-local backup was saved first.");
+    pendingImport = null;
+    showConflicts([]);
+    paintJournal();
+  }
+  [["j-import-new", false], ["j-import-prefer", true]].forEach(([id, prefer]) => {
+    const button = document.getElementById(id);
+    if (button) button.addEventListener("click", () => applyImport(prefer));
+  });
+  const cancelButton = document.getElementById("j-import-cancel");
+  if (cancelButton) {
+    cancelButton.addEventListener("click", () => {
+      pendingImport = null;
+      showConflicts([]);
+      journalStatus("Import cancelled; no browser journal changes were made.");
+    });
   }
 
   const journalForm = document.getElementById("journal-form");
@@ -537,6 +655,7 @@
           fund: document.getElementById("j-fund").value,
           reason: document.getElementById("j-reason").value,
           confidence: Number(document.getElementById("j-conf").value),
+          tags: (document.getElementById("j-tags") || {}).value || "",
         }));
         writeJournal(rows);
         journalStatus("Saved in this browser. Export it to move it to the command-line journal.");
@@ -582,6 +701,12 @@
           const incomingRows = documentPayload.entries.map(normalizeJournalEntry);
           const preview = previewJournalImport(localRows, incomingRows);
           const summary = "Preview: " + preview.additions.length + " new, " + preview.duplicates.length + " duplicate, " + preview.conflicts.length + " conflict.";
+          if (preview.conflicts.length) {
+            pendingImport = { localRows, preview, summary };
+            showConflicts(preview.conflicts);
+            journalStatus(summary + " Review the conflicts side by side, then choose how to import.");
+            return;
+          }
           journalStatus(summary + " Local conflicts will be retained.");
           if (!preview.additions.length) return;
           const accepted = window.confirm(summary + " Import only the new entries? Existing entries and conflicts will not be overwritten.");
@@ -633,6 +758,49 @@
     refresh();
   }
   paintLocalPlan();
+
+  load("returns.json").then((payload) => {
+    returnsPayload = payload;
+    paintOutcomes(readJournal());
+  }).catch(() => {});
+
+  load("provenance.json").then((badge) => {
+    const node = document.getElementById("provenance-badge");
+    if (!node) return;
+    node.textContent = badge.verified
+      ? "Verified build: " + badge.checked + " hashes match (data as of " + badge.data_as_of + ")."
+      : "Build not verified: " + (badge.problems || []).slice(0, 3).join("; ");
+    node.className = "badge " + (badge.verified ? "ok" : "warn");
+  }).catch(() => {
+    const node = document.getElementById("provenance-badge");
+    if (node) node.textContent = "Build provenance: no verification record. Run tsp verify.";
+  });
+
+  load("allocation-drift.json").then((payload) => {
+    const select = document.getElementById("drift-rule");
+    const view = document.getElementById("drift-view");
+    if (!select || !view) return;
+    const rules = Object.keys(payload.rules || {});
+    rules.forEach((rule) => {
+      const option = document.createElement("option");
+      option.value = rule;
+      option.textContent = rule;
+      select.appendChild(option);
+    });
+    function paint() {
+      const data = payload.rules[select.value];
+      if (!data) { view.textContent = "No drift data."; return; }
+      const lines = ["Largest drift from the posted mix in any fund: " + (data.max_drift_any_fund * 100).toFixed(1) + " points."];
+      data.segments.slice(-12).forEach((seg) => {
+        const worst = Object.entries(seg.max_drift).sort((a, b) => b[1] - a[1])[0];
+        lines.push(seg.from + " to " + seg.to + ": biggest drift " + worst[0] + " " + (worst[1] * 100).toFixed(1) + " points");
+      });
+      view.textContent = lines.join("\n");
+      view.style.whiteSpace = "pre-line";
+    }
+    select.addEventListener("change", paint);
+    if (rules.length) paint();
+  }).catch(() => {});
 
   load("alert.json").then((alert) => {
     const node = document.getElementById("alert");

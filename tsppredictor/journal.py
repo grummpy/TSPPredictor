@@ -14,9 +14,11 @@ import os
 import shutil
 import tempfile
 from collections.abc import Iterable, Mapping
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import uuid4
+
+from tsppredictor import NOT_ADVICE
 
 FUNDS = {"G", "F", "C", "S", "I"}
 INTERCHANGE_KIND = "tsp_decision_journal"
@@ -28,16 +30,21 @@ class JournalError(ValueError):
 
 
 def _canonical_payload(row: Mapping) -> dict:
-    return {
+    payload = {
         "date": row["date"],
         "fund": row["fund"],
         "reason": row["reason"],
         "confidence": row["confidence"],
     }
+    if row.get("tags"):
+        payload["tags"] = list(row["tags"])
+    return payload
 
 
 def _legacy_id(payload: Mapping) -> str:
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    # Legacy ids hash only the original four fields so adding tags never re-keys an entry.
+    core = {key: payload[key] for key in ("date", "fund", "reason", "confidence")}
+    raw = json.dumps(core, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return "legacy-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -65,17 +72,46 @@ def normalize_entry(raw: Mapping, *, entry_id: str | None = None) -> dict:
         "reason": reason,
         "confidence": confidence,
     }
+    tags = normalize_tags(raw.get("tags"))
     supplied_id = entry_id if entry_id is not None else raw.get("id")
     stable_id = str(supplied_id) if supplied_id is not None else _legacy_id(payload)
     if not stable_id or len(stable_id) > 160:
         raise JournalError("journal entry id must be a non-empty string of at most 160 characters")
-    return {"id": stable_id, **payload}
+    entry = {"id": stable_id, **payload}
+    if tags:
+        entry["tags"] = tags
+    return entry
 
 
-def new_entry(*, decision_date: str, fund: str, reason: str = "", confidence: float = 0.0) -> dict:
+def normalize_tags(raw) -> list[str]:
+    """Free-form tags such as 'ift-limit' or 'news': lower-case, unique, sorted."""
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    if not isinstance(raw, list | tuple):
+        raise JournalError("journal entry tags must be a list of strings")
+    tags = sorted({str(tag).strip().lower().replace(" ", "-") for tag in raw if str(tag).strip()})
+    if any(len(tag) > 40 for tag in tags) or len(tags) > 20:
+        raise JournalError("journal entry tags must be at most 20 tags of at most 40 characters")
+    return tags
+
+
+def journal_tags(entry: Mapping) -> list[str]:
+    """The tags on one entry (normalized)."""
+    return normalize_tags(entry.get("tags"))
+
+
+def filter_by_tag(entries: Iterable[Mapping], tag: str) -> list[dict]:
+    wanted = normalize_tags([tag])[0]
+    return [dict(entry) for entry in entries if wanted in journal_tags(entry)]
+
+
+def new_entry(*, decision_date: str, fund: str, reason: str = "", confidence: float = 0.0,
+              tags: Iterable[str] | None = None) -> dict:
     """Create a new journal entry with a fresh stable id."""
     return normalize_entry(
-        {"date": decision_date, "fund": fund, "reason": reason, "confidence": confidence},
+        {"date": decision_date, "fund": fund, "reason": reason, "confidence": confidence, "tags": list(tags or [])},
         entry_id="journal-" + uuid4().hex,
     )
 
@@ -131,6 +167,7 @@ def make_interchange(entries: Iterable[Mapping]) -> dict:
     return {
         "schema_version": INTERCHANGE_SCHEMA_VERSION,
         "kind": INTERCHANGE_KIND,
+        "not_advice": NOT_ADVICE,
         "entries": normalized,
     }
 
@@ -208,7 +245,7 @@ def _write_jsonl_atomically(path: Path, entries: Iterable[Mapping]) -> None:
 
 
 def _backup(path: Path) -> Path:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     candidate = path.with_name(f"{path.name}.{stamp}.bak")
     suffix = 1
     while candidate.exists():
@@ -227,17 +264,83 @@ def import_interchange(
     """Append previewed entries, retaining local conflicts and a backup copy.
 
     ``keep-local`` imports only new entries.  ``error`` reports conflicts and
-    makes no change at all.  There intentionally is no overwrite option.
+    makes no change at all.  ``prefer-incoming`` also replaces conflicting
+    local entries with the incoming version, always after the timestamped
+    backup of the local file is written.
     """
-    if on_conflict not in {"keep-local", "error"}:
-        raise JournalError("on_conflict must be 'keep-local' or 'error'")
+    if on_conflict not in {"keep-local", "error", "prefer-incoming"}:
+        raise JournalError("on_conflict must be 'keep-local', 'error', or 'prefer-incoming'")
     preview = preview_import(journal_path, interchange_path)
     if preview["conflicts"] and on_conflict == "error":
         raise JournalError("interchange conflicts found; no local journal changes were made")
     new_entries = preview["new_entries"]
-    if not new_entries:
-        return {**preview, "added": 0, "backup": None}
+    replace = {}
+    if on_conflict == "prefer-incoming" and preview["conflicts"]:
+        incoming = {row["id"]: row for row in read_interchange(interchange_path)}
+        replace = {conflict["id"]: incoming[conflict["id"]] for conflict in preview["conflicts"]}
+    if not new_entries and not replace:
+        return {**preview, "added": 0, "replaced": 0, "backup": None}
     existing = read_journal(journal_path)
     backup = _backup(journal_path) if journal_path.exists() else None
-    _write_jsonl_atomically(journal_path, [*existing, *new_entries])
-    return {**preview, "added": len(new_entries), "backup": None if backup is None else str(backup)}
+    merged = [replace.get(row["id"], row) for row in existing]
+    _write_jsonl_atomically(journal_path, [*merged, *new_entries])
+    return {**preview, "added": len(new_entries), "replaced": len(replace),
+            "backup": None if backup is None else str(backup)}
+
+
+def journal_diff(a: Iterable[Mapping], b: Iterable[Mapping]) -> dict:
+    """Entries only in ``a``, only in ``b``, identical, and same-id conflicts."""
+    left = {row["id"]: row for row in _normalize_entries(a, source="a")}
+    right = {row["id"]: row for row in _normalize_entries(b, source="b")}
+    conflicts = [
+        {"id": key, "a": _canonical_payload(left[key]), "b": _canonical_payload(right[key])}
+        for key in sorted(left.keys() & right.keys())
+        if _canonical_payload(left[key]) != _canonical_payload(right[key])
+    ]
+    return {
+        "only_in_a": [left[key] for key in sorted(left.keys() - right.keys())],
+        "only_in_b": [right[key] for key in sorted(right.keys() - left.keys())],
+        "identical": sorted(key for key in left.keys() & right.keys()
+                            if _canonical_payload(left[key]) == _canonical_payload(right[key])),
+        "conflicts": conflicts,
+    }
+
+
+def interchange_stats(path: Path) -> dict:
+    """Count, date range, funds and tags in an interchange file."""
+    entries = read_interchange(path)
+    dates = sorted(row["date"] for row in entries)
+    funds: dict[str, int] = {}
+    tags: dict[str, int] = {}
+    for row in entries:
+        funds[row["fund"]] = funds.get(row["fund"], 0) + 1
+        for tag in row.get("tags", []):
+            tags[tag] = tags.get(tag, 0) + 1
+    return {"path": str(path), "count": len(entries), "first_date": dates[0] if dates else None,
+            "last_date": dates[-1] if dates else None, "funds": dict(sorted(funds.items())),
+            "tags": dict(sorted(tags.items()))}
+
+
+def sync_folder(journal_path: Path, folder: Path, *, on_conflict: str = "keep-local",
+                filename: str = "tsp-journal.json") -> dict:
+    """Journal File Sync: import the shared file from ``folder`` (if any), then export back to it.
+
+    The folder is one you pick (a USB stick, a NAS share, a synced folder).  The
+    import step keeps local entries on conflict unless told otherwise and always
+    backs up the local journal first; the export step writes atomically.
+    """
+    folder = Path(folder)
+    if not folder.is_dir():
+        raise JournalError(f"sync folder does not exist: {folder}")
+    shared = folder / filename
+    imported = None
+    if shared.exists():
+        imported = import_interchange(journal_path, shared, on_conflict=on_conflict)
+    payload = make_interchange(read_journal(journal_path))
+    temporary = shared.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(shared)
+    return {"shared_file": str(shared), "imported": None if imported is None else {
+        "added": imported["added"], "replaced": imported.get("replaced", 0),
+        "conflicts": len(imported["conflicts"]), "backup": imported["backup"]},
+        "exported": len(payload["entries"])}
