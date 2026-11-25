@@ -266,9 +266,9 @@ def upcoming_display(today: date | None = None, days: int = 14) -> tuple[list[Re
             raise ValueError("Invalid schedule metadata")
         schedule = _future_schedule(text, as_of)
     except FileNotFoundError:
-        return list(rows.values()), {"state": "missing"}
+        return sorted(rows.values(), key=lambda r: (r.release_date, r.series)), {"state": "missing"}
     except (ValueError, TypeError, AttributeError, KeyError, OSError):
-        return list(rows.values()), {"state": "invalid"}
+        return sorted(rows.values(), key=lambda r: (r.release_date, r.series)), {"state": "invalid"}
     for key, release_row in schedule.items():
         rows.pop(key, None)
         if today <= release_row.release_date <= end:

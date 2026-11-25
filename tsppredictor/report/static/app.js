@@ -565,7 +565,7 @@
     const body = document.querySelector("#j-outcomes tbody");
     if (!body) return;
     const filterNode = document.getElementById("j-filter");
-    const tag = filterNode ? filterNode.value.trim().toLowerCase() : "";
+    const tag = filterNode ? filterNode.value.trim().toLowerCase().replace(/\s+/g, "-") : "";
     body.textContent = "";
     rows.filter((row) => !tag || (row.tags || []).includes(tag)).forEach((row) => {
       const tr = document.createElement("tr");
