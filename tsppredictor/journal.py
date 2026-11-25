@@ -103,7 +103,10 @@ def journal_tags(entry: Mapping) -> list[str]:
 
 
 def filter_by_tag(entries: Iterable[Mapping], tag: str) -> list[dict]:
-    wanted = normalize_tags([tag])[0]
+    tags = normalize_tags([tag])
+    if not tags:
+        return [dict(entry) for entry in entries]
+    wanted = tags[0]
     return [dict(entry) for entry in entries if wanted in journal_tags(entry)]
 
 

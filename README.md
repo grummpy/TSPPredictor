@@ -62,7 +62,7 @@ tsp journal preview --path /tmp/tsp-journal.json  # shows new notes, duplicates,
 tsp journal import --path /tmp/tsp-journal.json   # appends only new notes and saves a timestamped local backup first
 ```
 
-Imports never replace a local note. An identical stable id is a duplicate; an id with different date, fund, reason, or confidence is a conflict that remains local unless the user resolves it outside the tool. The browser uses the same document, previews its additions/duplicates/conflicts, asks before merging new notes, and retains a browser-local pre-import copy. Journal operations are local notes only: they never access a TSP account or submit a transfer.
+By default, imports never replace a local note (`--on-conflict keep-local`); pass `--on-conflict prefer-incoming` (or choose **Import and prefer incoming** in the browser) to replace conflicting entries after saving a backup. An identical stable id is a duplicate; an id with different date, fund, reason, confidence, or tags is a conflict. The browser uses the same document, previews its additions/duplicates/conflicts, asks before merging new notes, and retains a browser-local pre-import copy. Journal operations are local notes only: they never access a TSP account or submit a transfer.
 
 ## Rules the engine models
 
@@ -119,8 +119,8 @@ Why timing usually loses: the independent record assembled by Barfield Financial
 See `docs/NOV22_IDEA_PACK.md` for the full checklist. In short:
 
 - `tsp verify` rechecks every SHA-256 in `dist/data/build-manifest.json`; `tsp serve` re-verifies and the page shows a provenance badge. `tsp reproduce` rebuilds into `data/cache/reproduce` and confirms the outputs match (timing fields excluded).
-- `tsp journal add --tags`, `journal list --tag`, `journal diff`, `journal stats`, `journal review --month`, `journal calibration [--html card.html]`, `journal sync --folder`, and `journal import --on-conflict prefer-incoming` (always after a backup). Interchange files carry the not-advice notice.
-- `tsp ift log/summary`: a personal diary of the two monthly transfers (never submits anything).
+- `tsp journal add --tags`, `journal list [--tag TAG]`, `journal diff --path FILE`, `journal stats --path FILE`, `journal review --month YYYY-MM`, `journal calibration [--html card.html]`, `journal sync --folder DIR`, and `journal import --path FILE --on-conflict prefer-incoming` (always after a backup). Interchange files carry the not-advice notice.
+- `tsp ift log --date YYYY-MM-DD --from MIX --to MIX [--g-only]` and `tsp ift summary --month YYYY-MM`: a personal diary of the two monthly transfers (never submits anything).
 - `tsp releases` and release-day notes in `tsp check`; `tsp vintage-replay`.
 - Optional connectors, all off until installed/configured: ALFRED (`FRED_API_KEY`), BLS ICS, Fed H.15 DDP (`tsp update --h15`), Narwhals, Pointblank, whylogs, MLflow (`MLFLOW_TRACKING_URI`), Obsidian and Evidence.dev exports (`tsp export obsidian|evidence`), and LocalSend (`tsp export localsend --host <private LAN IP>`; loopback/private addresses only, CGNAT, multicast and link-local are refused).
 - For a local BLS schedule use `tsp update --ics-file /path/to/bls.ics` (offline); for a calendar-only BLS fetch use `tsp update --skip-tsp --release-calendar`. The validated upcoming schedule is cached locally with source type and SHA-256 and used only by `tsp releases` and the display alerts in `tsp check`. It does not alter the bundled historical calendar, report/model inputs, or verified builds. A local ICS is user-supplied, not proof of publication.
@@ -130,7 +130,7 @@ Obsidian exports use a stable filename derived from each journal entry ID. Re-ex
 
 ## Privacy
 
-Nothing is transmitted. There is no account, no telemetry, and no API key in the repository. A balance and a retirement year, if you type them, stay in the browser's local storage. `tsp journal add` and `tsp check` write under `data/user/`, which is gitignored, along with `data/cache/` and `.env`. Dollar figures on the page are labeled hypothetical and default to $100,000.
+Nothing is transmitted. There is no account, no telemetry, and no API key in the repository. A balance and a retirement year, if you type them, stay in the browser's local storage. `tsp journal add`, `tsp ift log`, and `tsp check` write under `data/user/`, which is gitignored, along with `data/cache/` and `.env`. Dollar figures on the page are labeled hypothetical and default to $100,000.
 
 ## Limitations
 

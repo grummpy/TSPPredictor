@@ -206,7 +206,11 @@ def reproduce(
     if work_dir == reference:
         typer.echo("The work dir must differ from the reference build.")
         raise typer.Exit(code=2)
-    result = run_reproduce(reference, work_dir)
+    try:
+        result = run_reproduce(reference, work_dir)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Cannot reproduce build from {reference}: {exc}")
+        raise typer.Exit(code=1) from exc
     typer.echo(json.dumps(result, indent=2))
     if not result["reproduced"]:
         raise typer.Exit(code=1)
@@ -345,8 +349,12 @@ def journal_list(tag: str = typer.Option("", help="Only entries with this tag.")
     from tsppredictor.journal_insights import with_outcomes
 
     entries = _entries()
-    if tag:
-        entries = filter_by_tag(entries, tag)
+    if tag.strip():
+        try:
+            entries = filter_by_tag(entries, tag)
+        except JournalError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(code=1) from exc
     typer.echo(json.dumps(with_outcomes(entries, _prices()), indent=2))
     typer.echo(NOT_ADVICE)
 
@@ -369,6 +377,7 @@ def journal_calibration(
     result = confidence_calibration(_entries(), _prices())
     typer.echo(json.dumps(result, indent=2))
     if html:
+        html.parent.mkdir(parents=True, exist_ok=True)
         html.write_text(calibration_card_html(result), encoding="utf-8")
         typer.echo(f"Wrote {html}")
 
