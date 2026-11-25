@@ -1,0 +1,45 @@
+{
+  "repo": "TSPPredictor",
+  "revision": "6718278ade004f0695601a4e62e477cdf038c5e4",
+  "launcher_os": [],
+  "host": {
+    "total": 0,
+    "by_verdict": {},
+    "executed_cases": 0
+  },
+  "verify": {
+    "total": 6,
+    "by_class": {
+      "fail-closed": 5,
+      "NOT_APPLICABLE": 1
+    },
+    "method": "heuristic, hand-reviewed; verify_manifest re-classed after probe"
+  },
+  "judge": {
+    "total": 0,
+    "by_same": {}
+  },
+  "media": {
+    "total": 2,
+    "by_status": {
+      "unique": 2
+    },
+    "duplicate_bytes": 0
+  },
+  "platform": {
+    "total": 1,
+    "by_kind": {
+      "subprocess": 1
+    },
+    "risk_rows": 0
+  },
+  "user_field": {
+    "total": 8,
+    "by_class": {
+      "user": 6,
+      "system-overwrite": 1,
+      "system-append": 1
+    },
+    "method": "5 heuristic localStorage rows + 3 manual addenda"
+  }
+}

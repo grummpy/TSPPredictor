@@ -1,0 +1,9 @@
+file,line,object,field,operator,rhs,classification
+tsppredictor/report/static/app.js,211,localStorage,IFT_KEY,setItem,JSON.stringify(rows),user
+tsppredictor/report/static/app.js,488,localStorage,JOURNAL_KEY,setItem,JSON.stringify(rows),user
+tsppredictor/report/static/app.js,592,localStorage,JOURNAL_BACKUP_KEY,setItem,"JSON.stringify({ at: new Date().toISOString(), entries: localRows })",user
+tsppredictor/report/static/app.js,625,localStorage,"""tsp-balance""",setItem,balance.value,user
+tsppredictor/report/static/app.js,626,localStorage,"""tsp-retire""",setItem,retire.value,user
+tsppredictor/cli.py,127,journal.jsonl,entry,append,user decision via `tsp journal add`,user (manual)
+tsppredictor/report/static/app.js,592,localStorage,JOURNAL_BACKUP_KEY,setItem,pre-import snapshot of local rows,system-overwrite (manual; replaces the previous backup)
+tsppredictor/journal (import_interchange),169,journal.jsonl,entries,append,import keeps local entries on conflict,system-append (manual)

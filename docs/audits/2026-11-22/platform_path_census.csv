@@ -1,0 +1,2 @@
+file,line,kind,code,test_file,os_no_launcher
+tsppredictor/build.py,106,subprocess,result = subprocess.run(,False,NOT_APPLICABLE: repo has no OS launcher (CLI only)
