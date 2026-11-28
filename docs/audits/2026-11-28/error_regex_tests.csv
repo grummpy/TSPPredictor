@@ -1,0 +1,35 @@
+site_id,file,line,phase,pattern,site_kinds,word,word_kind,matched,false_match
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,429 Too Many Requests,rate_limit,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,rate limit exceeded,rate_limit,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,quota exceeded for this month,rate_limit,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,request timed out after 30000 ms,timeout,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,ETIMEDOUT,timeout,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,connect ECONNREFUSED 127.0.0.1:8188,network,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,fetch failed,network,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,socket hang up,network,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,read ECONNRESET,network,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,401 Unauthorized,auth,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,invalid API key,auth,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,permission denied,auth,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,The operation was aborted,cancel,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,job cancelled by user,cancel,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,model 'llama3' not found,model,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,CUDA out of memory,model,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,Failed to generate image,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,generated 4 images,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,moderate content filter tripped,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,accurate answer required,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,Could not load catalog.json,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,dialog closed,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,keyboard layout unknown,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,author field missing,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,tokenizer.json missing,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,contextual help unavailable,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,separate worker crashed,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,iterate over undefined,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,monkey patch failed,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,hashtag parse error,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,login page returned 500,other,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,see the runtime log for details,log,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,check logs,log,0,0
+TSP-12.2-32f191aa4ce3,tsppredictor/data/release_calendar.py,174,before,^STATUS:CANCELLED\s*$,NA,unknown failure,other,0,0
