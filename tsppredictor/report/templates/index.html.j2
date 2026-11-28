@@ -28,10 +28,31 @@
       <p class="advice">{{ not_advice }}</p>
       <p id="alert" class="banner">Loading the local alert file.</p>
       <p id="provenance-badge" class="badge muted" aria-live="polite">Build provenance: checking.</p>
+      <p id="snapshot-age" class="badge muted" aria-live="polite" data-as-of="{{ today.data_as_of }}">Snapshot age: checking.</p>
 
       <section id="today" class="page active">
         <h1>Today</h1>
         <p class="muted">Share prices through {{ today.data_as_of }}. Signal date {{ today.signal_date }}.</p>
+        <article class="card" id="data-drift">
+          <h2>Data drift</h2>
+          {% set drift = meta.price_profile_flags or [] %}
+          {% if drift %}
+          <p>{{ drift|length }} price-profile flag{{ "s" if drift|length != 1 }} against the acknowledged profile.</p>
+          <ul>{% for line in (meta.price_profile or {}).explanations or [] %}<li>{{ line }}</li>{% endfor %}</ul>
+          {% else %}
+          <p>No price-profile flags. The data looks like the acknowledged profile.</p>
+          {% endif %}
+          <p><a href="addons/data-drift.html">Review or acknowledge flags</a></p>
+        </article>
+        <article class="card" id="addons">
+          <h2>Lab add-ons</h2>
+          <ul>
+            <li><a href="addons/profile-timeline.html">Profile timeline</a></li>
+            <li><a href="addons/gpr-spikes.html">GPR spike explorer</a></li>
+            <li><a href="addons/rate-rise-atlas.html">Rate-rise window atlas (G versus F)</a></li>
+            <li><a href="addons/study-caveats.html">Study caveat panel</a></li>
+          </ul>
+        </article>
         <article class="card">
           <h2>Why this signal</h2>
           <p>

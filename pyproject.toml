@@ -24,6 +24,9 @@ frames = ["narwhals>=1.0"]
 validation = ["pointblank>=0.8"]
 profiling = ["whylogs>=1.3"]
 tracking = ["mlflow>=2.10"]
+# Nov 27 pack connectors (all optional; the build runs without them).
+fast = ["pyarrow>=14", "polars>=1.0"]
+arrays = ["zarr>=2.16", "h5py>=3.10"]
 
 [project.scripts]
 tsp = "tsppredictor.cli:app"

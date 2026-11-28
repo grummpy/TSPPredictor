@@ -27,13 +27,42 @@ ift_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Personal
 app.add_typer(ift_app, name="ift")
 export_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Local exports (Obsidian, Evidence.dev, LocalSend).")
 app.add_typer(export_app, name="export")
+profile_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Price-profile baseline, history and alarms.")
+app.add_typer(profile_app, name="profile")
+lab_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Lab add-ons (local files only).")
+app.add_typer(lab_app, name="lab")
 
 BIND_HOST = "127.0.0.1"
 
 
+class DashboardHandler(SimpleHTTPRequestHandler):
+    """Static dist/ plus one local action: acknowledge the price-profile flags.
+
+    The POST needs the ``X-TSP-Local: 1`` header. A page on another site cannot
+    send a custom header to this server without a CORS preflight, which this
+    handler never approves, so only the dashboard itself can press the button.
+    """
+
+    def do_POST(self):  # noqa: N802 - http.server naming
+        if self.path.split("?")[0] != "/api/profile/acknowledge":
+            self.send_error(404)
+            return
+        if self.headers.get("X-TSP-Local") != "1":
+            self.send_error(403, "missing X-TSP-Local header")
+            return
+        from tsppredictor.connectors.profiling import acknowledge_flags
+
+        body = json.dumps(acknowledge_flags()).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
 def make_server(port: int) -> ThreadingHTTPServer:
     """HTTP server bound to the loopback interface only."""
-    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(dist_dir()))
+    handler = functools.partial(DashboardHandler, directory=str(dist_dir()))
     return ThreadingHTTPServer((BIND_HOST, port), handler)
 
 
@@ -459,3 +488,178 @@ def export_localsend(
         except (JournalError, ValueError) as exc:
             typer.echo(str(exc))
             raise typer.Exit(code=1)
+
+
+# --- Nov 27 2026 idea pack ------------------------------------------------
+
+def _core_prices():
+    from tsppredictor.data.snapshot import core_prices, load_snapshot
+
+    return core_prices(load_snapshot())
+
+
+@profile_app.command("acknowledge")
+def profile_acknowledge() -> None:
+    """Make the latest saved profile the baseline so current flags clear on the next build."""
+    from tsppredictor.connectors.profiling import acknowledge_flags
+
+    typer.echo(json.dumps(acknowledge_flags(), indent=2))
+
+
+@profile_app.command("history")
+def profile_history_cmd(n: int = typer.Option(12, help="How many saved profiles.")) -> None:
+    """List saved price profiles with their flag counts."""
+    from tsppredictor.connectors.profiling import profile_history
+
+    for record in profile_history(n):
+        typer.echo(f"{record.get('data_as_of')}  flags={len(record.get('flags', []))}  {record['_file']}")
+
+
+@profile_app.command("restatement-check")
+def restatement_check() -> None:
+    """Restatement Alarm: exit 1 if older prices changed since the acknowledged baseline."""
+    from tsppredictor.addons import restatement_alarm
+
+    result = restatement_alarm(_core_prices())
+    typer.echo(json.dumps(result, indent=2))
+    if result.get("restated"):
+        raise typer.Exit(code=1)
+
+
+@profile_app.command("export")
+def profile_export(out: Path = typer.Option(Path("tsp-profile-bundle.zip"), "--out")) -> None:
+    """Profile Export Bundle: zip the baseline, saved profiles, whylogs file and flags."""
+    from tsppredictor.addons import profile_export_bundle
+
+    meta_path = dist_dir() / "data" / "meta.json"
+    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    typer.echo(json.dumps(profile_export_bundle(out, meta=meta), indent=2))
+
+
+@profile_app.command("hdf5")
+def profile_hdf5(out: Path = typer.Option(Path("tsp-profiles.h5"), "--out")) -> None:
+    """Write every saved profile into one HDF5 file (needs h5py)."""
+    from tsppredictor.connectors.hdf5_profiles import write_profiles
+    from tsppredictor.connectors.profiling import profile_history
+
+    try:
+        typer.echo(json.dumps(write_profiles(profile_history(), out), indent=2))
+    except RuntimeError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("snapshot-age")
+def snapshot_age_cmd() -> None:
+    """Snapshot Age Badge: projected TSP sessions since the last bundled price."""
+    from tsppredictor.addons import snapshot_age
+
+    prices = _core_prices()
+    typer.echo(snapshot_age(prices.index.max().strftime("%Y-%m-%d"))["label"])
+
+
+@lab_app.command("bench")
+def bench_cmd(repeats: int = typer.Option(5)) -> None:
+    """Polars Fast Path Bench: time the profile step on pandas and through Polars."""
+    from tsppredictor.addons import polars_bench
+
+    typer.echo(json.dumps(polars_bench(_core_prices(), repeats=repeats), indent=2))
+
+
+@lab_app.command("note")
+def note_cmd(month: str = typer.Option(..., help="Month YYYY-MM."),
+             out: Path = typer.Option(None, "--out", help="PDF path (default dist/notes/<month>.pdf).")) -> None:
+    """Monthly Learning Note: a one-page PDF of what the rules did that month."""
+    from tsppredictor.addons import monthly_learning_note
+
+    out = out or (dist_dir() / "notes" / f"learning-note-{month}.pdf")
+    try:
+        typer.echo(str(monthly_learning_note(month, dist_dir(), out)))
+    except FileNotFoundError:
+        typer.echo("Run tsp build first.")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("caveats")
+def caveats_cmd() -> None:
+    """Study Caveat Panel: every study note and sample count."""
+    from tsppredictor.addons import study_caveats
+
+    for row in study_caveats(dist_dir())["caveats"]:
+        typer.echo(f"{row['where']}  n={row['n']}  {row['note']}")
+
+
+@lab_app.command("scarcity")
+def scarcity_cmd(q: float = typer.Option(0.05, help="Quantile, e.g. 0.05 or 0.10.")) -> None:
+    """Recompute the transfer-limit upper bound at another quantile (reads dist/data/today.json)."""
+    today = json.loads((dist_dir() / "data" / "today.json").read_text())
+    typer.echo(json.dumps(today.get("scarcity"), indent=2))
+    typer.echo(f"Re-running at q={q} needs a build: the raw targets are not saved in dist/. Use studies.scarcity_at() in code.")
+
+
+@lab_app.command("flight")
+def flight_cmd(host: str = typer.Option("127.0.0.1"), port: int = typer.Option(8815),
+               allow_lan: bool = typer.Option(False, "--allow-lan")) -> None:
+    """Arrow Flight: serve the price frames read-only (needs pyarrow)."""
+    from tsppredictor.connectors.flight import make_server as flight_server
+
+    try:
+        server, location = flight_server({"prices": _core_prices()}, host, port, allow_lan=allow_lan)
+    except (RuntimeError, ValueError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+    typer.echo(f"Arrow Flight serving 'prices' at {location}. Ctrl-C to stop.")
+    server.serve()
+
+
+@export_app.command("numbers")
+def export_numbers_cmd(start: str = typer.Option(..., help="First month YYYY-MM."),
+                       end: str = typer.Option(..., help="Last month YYYY-MM."),
+                       out: Path = typer.Option(Path("tsp-history.csv"), "--out")) -> None:
+    """Apple Numbers CSV of the History lab month range."""
+    from tsppredictor.connectors.numbers_csv import export_numbers
+
+    try:
+        typer.echo(json.dumps(export_numbers(dist_dir(), out, start, end), indent=2))
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+
+
+@export_app.command("notebook")
+def export_notebook_cmd(study: str = typer.Option(..., help="gpr_spikes, seasonality, stress or g_versus_f."),
+                        out: Path = typer.Option(None, "--out")) -> None:
+    """Jupyter notebook that reproduces one study from dist/ data."""
+    from tsppredictor.connectors.notebook import write_notebook
+
+    try:
+        typer.echo(str(write_notebook(study, dist_dir(), out or Path(f"tsp-{study}.ipynb"))))
+    except (KeyError, FileNotFoundError) as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(code=1)
+
+
+@export_app.command("redash")
+def export_redash_cmd(out: Path = typer.Option(Path("tsp-redash.sqlite"), "--out")) -> None:
+    """SQLite copy of the journal and run log for a self-hosted Redash SQLite data source."""
+    from tsppredictor.connectors.redash import export_sqlite
+    from tsppredictor.paths import cache_dir
+
+    typer.echo(json.dumps(export_sqlite(out, journal=user_dir() / "journal.jsonl", runs=cache_dir() / "runs.jsonl"), indent=2))
+
+
+@export_app.command("vega")
+def export_vega_cmd(out_dir: Path = typer.Option(Path("tsp-vega"), "--out-dir")) -> None:
+    """Vega-Lite specs for the Profile Timeline and the GPR Spike Explorer."""
+    from tsppredictor.connectors.vegalite import profile_timeline_spec, spike_explorer_spec
+
+    data = dist_dir() / "data"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, builder, source in (("profile-timeline", profile_timeline_spec, "profile-timeline.json"),
+                                  ("gpr-spikes", spike_explorer_spec, "gpr-spike-explorer.json")):
+        path = data / source
+        if not path.exists():
+            typer.echo(f"{path} missing; run tsp build first.")
+            raise typer.Exit(code=1)
+        (out_dir / f"{name}.vl.json").write_text(json.dumps(builder(json.loads(path.read_text())), indent=2))
+    typer.echo(str(out_dir))

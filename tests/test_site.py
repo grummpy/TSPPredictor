@@ -14,13 +14,6 @@ from tsppredictor.cli import BIND_HOST, make_server
 from tsppredictor.data.snapshot import check_integrity
 
 
-@pytest.fixture(scope="session")
-def built():
-    from tsppredictor.build import run_build
-
-    return run_build()
-
-
 def test_25_build_outputs_and_no_remote_assets(built):
     dist = Path(built["dist"])
     html = (dist / "index.html").read_text()
