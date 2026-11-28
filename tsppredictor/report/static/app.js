@@ -807,6 +807,18 @@
     if (node && alert && alert.message) node.textContent = alert.message;
   }).catch(() => {});
 
+  // Snapshot Age Badge: projected TSP sessions after the last bundled price, up to today.
+  function paintSnapshotAge(calendar) {
+    const node = document.getElementById("snapshot-age");
+    if (!node) return;
+    const asOf = node.dataset.asOf || calendar.data_as_of;
+    const now = new Date();
+    const todayIso = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    const sessions = (calendar.projected || []).filter((day) => day > asOf && day <= todayIso).length;
+    node.textContent = sessions === 0 ? "Snapshot is current" : "Snapshot is " + sessions + " session" + (sessions === 1 ? "" : "s") + " old (prices through " + asOf + ")";
+    node.classList.toggle("muted", sessions < 5);
+  }
+
   load("curves.json").then((payload) => {
     curvesPayload = payload;
     drawCurves(curvesPayload, activeCadence, activeLag);
@@ -816,6 +828,7 @@
   load("calendar.json").then((calendar) => {
     (calendar.observed || []).forEach((day) => business.add(day));
     (calendar.projected || []).forEach((day) => business.add(day));
+    paintSnapshotAge(calendar);
     renderIft();
     setInterval(renderIft, 30000);
   }).catch(() => { renderIft(); });

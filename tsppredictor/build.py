@@ -56,6 +56,7 @@ from tsppredictor.paths import cache_dir, dist_dir, repo_root, snapshot_dir
 from tsppredictor.studies import (
     cost_of_being_wrong,
     event_window_study,
+    f_drawdown_by_window,
     fan_chart,
     g_versus_f,
     gpr_spike_study,
@@ -119,7 +120,21 @@ def _source_revision() -> str | None:
     return revision if len(revision) == 40 else None
 
 
-def _build_manifest(*, as_of: str, integrity, optional_sources: dict[str, bool]) -> dict:
+def engine_report() -> dict:
+    """Dataframe engine facts for the build meta (Narwhals bridge in connectors/frames.py)."""
+    from tsppredictor.connectors.frames import available, engine_name
+
+    report = {"engine": engine_name(pd.DataFrame()), "narwhals": available(), "optional_engines": {}}
+    for package in ("polars", "pyarrow", "modin"):
+        try:
+            report["optional_engines"][package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            report["optional_engines"][package] = None
+    return report
+
+
+def _build_manifest(*, as_of: str, integrity, optional_sources: dict[str, bool],
+                    profile_baseline_sha256: str | None = None) -> dict:
     """Describe reproducibility inputs for one entirely local build."""
 
     dependencies = {}
@@ -142,6 +157,8 @@ def _build_manifest(*, as_of: str, integrity, optional_sources: dict[str, bool])
         },
         "configuration": {"blocks": [dict(spec) for spec in BLOCKS]},
         "optional_sources": dict(optional_sources),
+        # The price-profile flags in meta.json depend on this cached baseline, so it is a build input.
+        "inputs": {"price_profile_baseline_sha256": profile_baseline_sha256},
         "limits": "Local snapshot and build provenance only; this does not validate future returns or give financial advice.",
     }
 
@@ -934,6 +951,7 @@ def run_build() -> dict:
     stress = stress_report(prices, snap.monthly, l_frame)
     xray = l_fund_xray(prices, daily_l.rename("L2050"))
     harbor = g_versus_f(prices, snap.monthly)
+    harbor["f_drawdown_by_window"] = f_drawdown_by_window(harbor)
     stale = toy_buy_i_after_c_up()
     _log("drift vs constant, validation, profile")
     from tsppredictor.backtest.compare import drift_vs_constant
@@ -949,14 +967,15 @@ def run_build() -> dict:
         drift_rows.append(comparison)
         drift_views[rule_id] = allocation_drift(sim["weights"], sim_dates, sim["post_dates"])
     price_validation = validate_prices(prices)
-    price_profile = profile_snapshot(prices)
+    price_profile = profile_snapshot(prices, l_frame=l_frame, data_as_of=as_of)
     refresh_path = snapshot_dir() / "REFRESH.json"
     if refresh_path.exists():
         refresh = json.loads(refresh_path.read_text())
     else:
         refresh = {"at": None, "ok": True, "source": "bundled snapshot", "data_as_of": as_of}
     optional = _optional_present()
-    provenance = _build_manifest(as_of=as_of, integrity=integrity, optional_sources=optional)
+    provenance = _build_manifest(as_of=as_of, integrity=integrity, optional_sources=optional,
+                                 profile_baseline_sha256=price_profile.get("baseline_sha256"))
     meta = {
         "schema_version": SCHEMA_VERSION,
         "data_as_of": as_of,
@@ -981,6 +1000,15 @@ def run_build() -> dict:
         "drift_vs_constant": drift_rows,
         "price_validation": {k: v for k, v in price_validation.items() if k != "checks"},
         "price_profile_flags": price_profile["flags"],
+        "price_profile": {
+            "explanations": price_profile["explanations"],
+            "baseline_data_as_of": price_profile["baseline_data_as_of"],
+            "baseline_sha256": price_profile["baseline_sha256"],
+            "l_funds_profiled": sorted(price_profile["l_funds"]),
+            "whylogs": price_profile["whylogs"],
+            "whylogs_reason": price_profile.get("whylogs_reason"),
+        },
+        "engine": engine_report(),
         "elapsed_seconds": round(time.perf_counter() - started, 1),
     }
     # Post-2008 slice note for the primary ensemble, already the daily window.
@@ -1116,6 +1144,10 @@ def run_build() -> dict:
     _dump(data / "allocation-drift.json", {"schema_version": SCHEMA_VERSION, "data_as_of": as_of,
                                            "cadence": "monthly", "lag": 1, "rules": drift_views,
                                            "note": "Monthly rule backtests; holdings drift with prices between transfers."})
+    from tsppredictor.addons import write_addon_pages
+    from tsppredictor.connectors.profiling import profile_history
+
+    write_addon_pages(dist, meta=meta, history=profile_history(), prices=prices, spikes=spikes, monthly=snap.monthly)
     from tsppredictor.connectors.tracking import log_run
     from tsppredictor.provenance import stamp_outputs, write_provenance_badge
 

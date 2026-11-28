@@ -71,33 +71,89 @@ def event_window_study(prices: pd.DataFrame, events: pd.DataFrame, pre: int = 20
     return {"pre": pre, "post": post, "note": SMALL_SAMPLE, "categories": categories}
 
 
-def gpr_spike_study(prices: pd.DataFrame, gpr_spike: pd.Series, pre: int = 20, post: int = 60) -> dict:
-    """Paths around days the lagged GPR z-score first crosses 2."""
-    flag = gpr_spike.fillna(0).to_numpy(dtype=float)
-    starts = [i for i in range(1, len(flag)) if flag[i] == 1 and flag[i - 1] == 0]
+def spike_starts(flag, cooldown: int = 0) -> list[int]:
+    """First-crossing indexes (0 -> 1) with at least ``cooldown`` sessions after each kept spike."""
+    values = np.nan_to_num(np.asarray(flag, dtype=float), nan=0.0)
+    if cooldown < 0:
+        raise ValueError("cooldown must be >= 0")
+    starts: list[int] = []
+    for i in range(1, len(values)):
+        if values[i] == 1 and values[i - 1] == 0:
+            if starts and i - starts[-1] <= cooldown:
+                continue
+            starts.append(i)
+    return starts
+
+
+def filled_sessions(window) -> int:
+    """Sessions in a window of returns (or prices) that are missing (NaN/inf) and get filled."""
+    arr = np.asarray(window, dtype=float)
+    return int((~np.isfinite(arr)).sum())
+
+
+def gpr_spike_study(prices: pd.DataFrame, gpr_spike: pd.Series, pre: int = 20, post: int = 60,
+                    cooldown: int | None = None) -> dict:
+    """Paths around days the lagged GPR z-score first crosses 2.
+
+    Spikes closer than ``cooldown`` sessions (default: the post window) to the
+    previous kept spike are skipped, so windows don't reuse the same sessions.
+    Missing returns are filled with 0 and counted in ``filled_sessions``.
+    """
+    cooldown = post if cooldown is None else cooldown
+    starts = spike_starts(gpr_spike.to_numpy(dtype=float), cooldown=cooldown)
     index_ok = [i for i in starts if i >= pre and i + post < len(prices)]
     funds = {}
-    rets = {fund: prices[fund].pct_change().to_numpy(dtype=float) for fund in ("G", "C", "F")}
+    # Missing prices are carried forward (a 0% day), which is a fill too, so the
+    # count covers both a missing price and a non-finite return.
+    rets = {fund: prices[fund].ffill().pct_change().to_numpy(dtype=float) for fund in ("G", "C", "F")}
+    missing = {fund: ~np.isfinite(pd.to_numeric(prices[fund], errors="coerce").to_numpy(dtype=float)) for fund in rets}
     for fund, series in rets.items():
         paths = []
+        filled = 0
         for loc in index_ok:
-            window = np.where(np.isfinite(series[loc - pre : loc + post + 1]), series[loc - pre : loc + post + 1], 0.0)
-            window[0] = 0.0
+            raw = series[loc - pre : loc + post + 1].copy()
+            raw[0] = 0.0  # the anchor session is the rebase point, not a missing value
+            gap = missing[fund][loc - pre + 1 : loc + post + 1]
+            filled += int((gap | ~np.isfinite(raw[1:])).sum())
+            window = np.where(np.isfinite(raw), raw, 0.0)
             paths.append(_cumpath(window) - 1.0)
         if not paths:
-            funds[fund] = {"n": 0, "median": []}
+            funds[fund] = {"n": 0, "median": [], "filled_sessions": 0}
             continue
         mat = np.vstack(paths)
         funds[fund] = {
             "n": int(mat.shape[0]),
             "median": [round(float(v), 6) for v in np.nanmedian(mat, axis=0)],
+            "filled_sessions": int(filled),
         }
+    dates = pd.DatetimeIndex(prices.index)
     return {
         "note": SMALL_SAMPLE + " GPR spikes use the lagged Caldara-Iacoviello index.",
         "n": int(len(index_ok)),
+        "cooldown_sessions": int(cooldown),
+        "skipped_overlapping": int(len(spike_starts(gpr_spike.to_numpy(dtype=float), 0)) - len(starts)),
+        "spike_dates": [dates[i].strftime("%Y-%m-%d") for i in index_ok],
         "offsets": list(range(-pre, post + 1)),
         "funds": funds,
+        "filled_note": "Missing daily returns inside a window are filled with 0; filled_sessions counts them.",
     }
+
+
+def spike_paths(prices: pd.DataFrame, spike_date: str, pre: int = 20, post: int = 60) -> dict:
+    """G, C and F cumulative paths around one spike date (for the GPR Spike Explorer)."""
+    dates = pd.DatetimeIndex(prices.index)
+    loc = int(dates.searchsorted(pd.Timestamp(spike_date)))
+    if loc >= len(dates) or loc < pre or loc + post >= len(dates):
+        raise ValueError(f"{spike_date} has no full window in the price history")
+    out = {"date": dates[loc].strftime("%Y-%m-%d"), "offsets": list(range(-pre, post + 1)), "funds": {}}
+    for fund in ("G", "C", "F"):
+        raw = prices[fund].ffill().pct_change().to_numpy(dtype=float)[loc - pre : loc + post + 1].copy()
+        raw[0] = 0.0
+        gap = ~np.isfinite(pd.to_numeric(prices[fund], errors="coerce").to_numpy(dtype=float))[loc - pre + 1 : loc + post + 1]
+        filled = int((gap | ~np.isfinite(raw[1:])).sum())
+        path = _cumpath(np.where(np.isfinite(raw), raw, 0.0)) - 1.0
+        out["funds"][fund] = {"path": [round(float(v), 6) for v in path], "filled_sessions": filled}
+    return out
 
 
 def _ttest_mean(values: np.ndarray) -> tuple[float | None, float | None, int]:
@@ -423,7 +479,8 @@ def fan_chart(fund_returns: np.ndarray, dates: pd.DatetimeIndex, n_boot: int = 3
     }
 
 
-def scarcity_upper_bound(raw_targets: np.ndarray, limited_weights: np.ndarray, fund_returns: np.ndarray) -> dict:
+def scarcity_upper_bound(raw_targets: np.ndarray, limited_weights: np.ndarray, fund_returns: np.ndarray,
+                         q: float = 0.05) -> dict:
     """A labeled upper bound on the transfer limit. It ignores execution lag."""
     raw = np.asarray(raw_targets, dtype=float)
     held = np.asarray(limited_weights, dtype=float)
@@ -432,15 +489,59 @@ def scarcity_upper_bound(raw_targets: np.ndarray, limited_weights: np.ndarray, f
         return {"available": False}
     # Days the unconstrained target wanted less G than the limited book actually held.
     wanted_less_g = np.isfinite(raw).all(axis=1) & (raw[:, 0] + 1e-8 < held[:, 0])
-    worst = np.isfinite(rets) & (rets <= np.nanquantile(rets[np.isfinite(rets)], 0.05))
+    if not 0 < q < 1:
+        raise ValueError("q must be between 0 and 1")
+    finite = rets[np.isfinite(rets)]
+    if not finite.size:
+        return {"available": False}
+    worst = np.isfinite(rets) & (rets <= np.quantile(finite, q))
     both = wanted_less_g & worst
+    label = _quantile_label(q)
     return {
         "available": True,
-        "worst_decile_sessions": int(worst.sum()),
+        "quantile": q,
+        "label": label,
+        "worst_sessions": int(worst.sum()),
+        # Kept for older readers; the old name said "decile" but the cut is the 5% quantile.
+        "worst_5pct_sessions": int(worst.sum()) if abs(q - 0.05) < 1e-12 else None,
         "of_which_limit_kept_more_g": int(both.sum()),
         "note": (
-            "Upper bound that ignores execution lag. It counts worst-decile C Fund sessions on which "
+            f"Upper bound that ignores execution lag. It counts the {label} of C Fund sessions on which "
             "the unconstrained target wanted less G than the transfer-limited book held. "
             "It is not an estimate of the value of saving a move."
         ),
     }
+
+
+def _quantile_label(q: float) -> str:
+    if abs(q - 0.10) < 1e-12:
+        return "worst decile (10%)"
+    if abs(q - 0.25) < 1e-12:
+        return "worst quartile (25%)"
+    pct = q * 100
+    return f"worst {pct:g}%"
+
+
+def scarcity_at(raw_targets, limited_weights, fund_returns, q: float) -> dict:
+    """scarcity_upper_bound() at any chosen quantile, labeled for that quantile."""
+    return scarcity_upper_bound(raw_targets, limited_weights, fund_returns, q=q)
+
+
+def f_drawdown_by_window(harbor: dict) -> list[dict]:
+    """Worst F Fund drawdown inside each g_versus_f() rate-rise window, next to G's."""
+    rows = []
+    for window in harbor.get("windows", []):
+        funds = window.get("funds", {})
+        f = funds.get("F") or {}
+        g = funds.get("G") or {}
+        rows.append({
+            "id": window.get("id"),
+            "cadence": window.get("cadence"),
+            "start": f.get("start"),
+            "end": f.get("end"),
+            "f_max_drawdown": f.get("max_drawdown"),
+            "f_total_return": f.get("total_return"),
+            "g_max_drawdown": g.get("max_drawdown"),
+            "g_total_return": g.get("total_return"),
+        })
+    return rows
