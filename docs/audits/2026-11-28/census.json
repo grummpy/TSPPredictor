@@ -1,0 +1,126 @@
+{
+  "artifacts": 91,
+  "audit": "ten-census 2026-11-28",
+  "batch_size_max": 10,
+  "batches": 10,
+  "censuses": {
+    "12.1": {
+      "NOT_APPLICABLE": 0,
+      "accepted": 0,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Double-Decode",
+      "ok": 0,
+      "sites_found": 0
+    },
+    "12.10": {
+      "NOT_APPLICABLE": 22,
+      "accepted": 0,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 7,
+      "name": "Label Truth",
+      "ok": 57,
+      "sites_found": 86
+    },
+    "12.2": {
+      "NOT_APPLICABLE": 1,
+      "accepted": 0,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Error Regex",
+      "ok": 0,
+      "sites_found": 1
+    },
+    "12.3": {
+      "NOT_APPLICABLE": 0,
+      "accepted": 0,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Timestamp Filename",
+      "ok": 3,
+      "sites_found": 3
+    },
+    "12.4": {
+      "NOT_APPLICABLE": 0,
+      "accepted": 0,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Lock Owner",
+      "ok": 0,
+      "sites_found": 0
+    },
+    "12.5": {
+      "NOT_APPLICABLE": 0,
+      "accepted": 18,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Silent Catch",
+      "ok": 0,
+      "sites_found": 18
+    },
+    "12.6": {
+      "NOT_APPLICABLE": 8,
+      "accepted": 1,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Naive Time",
+      "ok": 8,
+      "sites_found": 17
+    },
+    "12.7": {
+      "NOT_APPLICABLE": 15,
+      "accepted": 6,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Lossy Text",
+      "ok": 1,
+      "sites_found": 22
+    },
+    "12.8": {
+      "NOT_APPLICABLE": 1,
+      "accepted": 42,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 1,
+      "name": "Direct Overwrite",
+      "ok": 3,
+      "sites_found": 47
+    },
+    "12.9": {
+      "NOT_APPLICABLE": 0,
+      "accepted": 1,
+      "artifacts_covered": 46,
+      "artifacts_not_applicable": 45,
+      "fixed": 0,
+      "name": "Unbounded Memory",
+      "ok": 0,
+      "sites_found": 1
+    }
+  },
+  "classes": {
+    "binary": 2,
+    "code": 46,
+    "data/doc": 29,
+    "test": 13,
+    "vendor": 1
+  },
+  "coverage": {
+    "NOT_APPLICABLE": 450,
+    "covered": 460,
+    "percent": 100.0,
+    "rows": 910
+  },
+  "fix_branch": "grok/census-2026-11-28",
+  "reductions_sha256": "96ac9eae00b1d36d9484c5d50fad749c6b7b91bc977f22446308f207e68266f1",
+  "regex_after_fix_false_matches": {},
+  "repo": "grummpy/TSPPredictor",
+  "revision": "2798d68cef4cdac84ffc4fbeccc4affaefcf25b9"
+}

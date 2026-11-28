@@ -436,10 +436,11 @@ def scarcity_upper_bound(raw_targets: np.ndarray, limited_weights: np.ndarray, f
     both = wanted_less_g & worst
     return {
         "available": True,
-        "worst_decile_sessions": int(worst.sum()),
+        "worst_5pct_sessions": int(worst.sum()),
+        "quantile": 0.05,
         "of_which_limit_kept_more_g": int(both.sum()),
         "note": (
-            "Upper bound that ignores execution lag. It counts worst-decile C Fund sessions on which "
+            "Upper bound that ignores execution lag. It counts worst-5% C Fund sessions on which "
             "the unconstrained target wanted less G than the transfer-limited book held. "
             "It is not an estimate of the value of saving a move."
         ),

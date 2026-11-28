@@ -8,6 +8,7 @@ cache.  If ``whylogs`` is installed its profile is also written next to it.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +33,11 @@ def profile(prices: pd.DataFrame) -> dict:
 
 
 def compare(previous: dict, current: dict, *, z: float = 4.0) -> list[dict]:
-    """Flags: fewer rows than before, or a return std that moved by > z-fold log ratio."""
+    """Flags: fewer rows than before, or a return std that moved by more than z**(1/4)-fold.
+
+    The test is |log(now_std / before_std)| > log(z) / 4, so the default z=4
+    flags a std change of more than 4**0.25 ~= 1.41x up or down (not 4x).
+    """
     flags = []
     for fund, now in current.items():
         before = previous.get(fund)
@@ -53,7 +58,14 @@ def profile_snapshot(prices: pd.DataFrame, store: Path | None = None) -> dict:
     current = profile(prices)
     previous = json.loads(store.read_text(encoding="utf-8")) if store.exists() else {}
     flags = compare(previous, current)
-    store.write_text(json.dumps(current, indent=2, sort_keys=True), encoding="utf-8")
+    # Write via temp file + os.replace so a crash never leaves a truncated profile,
+    # which would make the next run fail to load the previous profile.
+    temporary = store.with_name(f"{store.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(current, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, store)
+    finally:
+        temporary.unlink(missing_ok=True)
     result = {"kind": "price_profile", "funds": current, "flags": flags, "whylogs": False}
     try:
         import whylogs as why
